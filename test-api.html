@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test API</title>
+</head>
+<body>
+    <h1>Test API</h1>
+    <button onclick="testRegister()">Register Test User</button>
+    <button onclick="testLogin()">Login Test User</button>
+    <button onclick="testCreateFood()">Create Food</button>
+    <pre id="output"></pre>
+
+    <script>
+        async function testRegister() {
+            try {
+                const response = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        nome: 'Teste',
+                        email: 'teste@prieto.com',
+                        password: 'Teste123!'
+                    })
+                });
+                const data = await response.json();
+                document.getElementById('output').textContent = JSON.stringify(data, null, 2);
+            } catch (e) {
+                document.getElementById('output').textContent = 'Error: ' + e.message;
+            }
+        }
+
+        async function testLogin() {
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        email: 'teste@prieto.com',
+                        password: 'Teste123!'
+                    })
+                });
+                const data = await response.json();
+                document.getElementById('output').textContent = JSON.stringify(data, null, 2);
+            } catch (e) {
+                document.getElementById('output').textContent = 'Error: ' + e.message;
+            }
+        }
+
+        async function testCreateFood() {
+            try {
+                const response = await fetch('/api/alimentos', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        codigoProduto: 'TEST001',
+                        nome: 'Alimento de Teste',
+                        unidade: 'kg',
+                        lote: 'LOTE-TEST',
+                        dataFabricacao: '2025-11-01',
+                        dataValidade: '2025-11-15',
+                        quantidade: 10,
+                        temperatura: '25C',
+                        shelfLife: 14,
+                        alertasConfig: {
+                            contarAPartirFabricacaoDias: 10,
+                            avisoQuandoUmTercoValidade: true,
+                            popUpNotificacoes: true
+                        }
+                    })
+                });
+                const data = await response.json();
+                document.getElementById('output').textContent = JSON.stringify(data, null, 2);
+            } catch (e) {
+                document.getElementById('output').textContent = 'Error: ' + e.message;
+            }
+        }
+    </script>
+</body>
+</html>
