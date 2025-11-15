@@ -103,16 +103,16 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   try {
-    const port = await findAvailablePort(5000, 5010);
-    process.env.PORT = port.toString();
-    
-    server.listen(
-      port,
-      "127.0.0.1",
-      () => {
-        log(`🚀 Servidor rodando em http://127.0.0.1:${port}`);
-      }
-    );
+  const port = process.env.PORT ? Number(process.env.PORT) : 5000;
+
+server.listen(
+  port,
+  "0.0.0.0",
+  () => {
+    log(`🚀 Servidor rodando em http://0.0.0.0:${port}`);
+  }
+);
+
   } catch (err) {
     console.error('Falha ao iniciar o servidor:', err);
     process.exit(1);
