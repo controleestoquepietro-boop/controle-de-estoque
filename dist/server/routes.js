@@ -466,6 +466,25 @@ async function registerRoutes(app) {
                 req.session.save((saveErr) => {
                     if (saveErr)
                         console.warn('Erro ao salvar sessão:', saveErr);
+                    // Garantir que o cookie da sessão seja enviado explicitamente.
+                    // Em alguns ambientes (proxy/reverse-proxy) o cookie pode não
+                    // ser incluído automaticamente na resposta; forçamos aqui
+                    // para melhorar confiabilidade (o valor é o sessionID gerado
+                    // pelo express-session).
+                    try {
+                        const cookieName = process.env.SESSION_COOKIE_NAME || 'session_id';
+                        const cookieOptions = {
+                            httpOnly: true,
+                            secure: process.env.NODE_ENV === 'production',
+                            sameSite: 'lax',
+                            path: '/',
+                            maxAge: 7 * 24 * 60 * 60 * 1000,
+                        };
+                        res.cookie(cookieName, req.sessionID, cookieOptions);
+                    }
+                    catch (e) {
+                        console.warn('Aviso: falha ao forçar envio de cookie de sessão:', e);
+                    }
                     res.json({
                         message: "Login realizado com sucesso!",
                         user: userRow || data.user,
