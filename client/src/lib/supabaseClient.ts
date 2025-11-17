@@ -7,10 +7,10 @@ const getEnvVar = (key: string) => {
     return import.meta.env[`VITE_${key}`];
   }
   
-  // Valores de fallback (redundância para desenvolvimento sem .env)
+  // Valores de fallback - Credenciais corretas do projeto Supabase
   const fallbackValues: Record<string, string> = {
-    SUPABASE_URL: 'https://qlfxvogcgcyiohjcfykq.supabase.co',
-    SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFsZnh2b2djZ2N5aW9oamNmeWtxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDI5MzYxNjQsImV4cCI6MjAxODUxMjE2NH0.OsVVrnMkxhLLsZVw1CGK5YQz5SM5jhmCEj3jgOXd8VU'
+    SUPABASE_URL: 'https://xppfzlscfkrhocmkdjsn.supabase.co',
+    SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhwcGZ6bHNjZmtyaG9jbWtkanNuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1OTQ1MzgsImV4cCI6MjA3NzE3MDUzOH0.SQ8Do7KEAbW-E4trrANOtFPbwgt9vJD5npTH32nw1Lg'
   };
   
   return fallbackValues[key];
