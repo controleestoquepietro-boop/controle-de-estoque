@@ -83,8 +83,49 @@ app.use((req, res, next) => {
         console.log('📍 Modo produção - serveStatic...');
         const distPath = path_1.default.join(__dirname, "../public");
         console.log('📍 distPath:', distPath);
-        app.use(express_1.default.static(distPath));
+        // Configurar MIME types para arquivos estáticos
+        app.use(express_1.default.static(distPath, {
+            setHeaders: (res, filePath) => {
+                if (filePath.endsWith('.js')) {
+                    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+                }
+                else if (filePath.endsWith('.css')) {
+                    res.setHeader('Content-Type', 'text/css; charset=utf-8');
+                }
+                else if (filePath.endsWith('.json')) {
+                    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                }
+                else if (filePath.endsWith('.woff2')) {
+                    res.setHeader('Content-Type', 'font/woff2');
+                }
+                else if (filePath.endsWith('.woff')) {
+                    res.setHeader('Content-Type', 'font/woff');
+                }
+                else if (filePath.endsWith('.ttf')) {
+                    res.setHeader('Content-Type', 'font/ttf');
+                }
+                else if (filePath.endsWith('.svg')) {
+                    res.setHeader('Content-Type', 'image/svg+xml');
+                }
+                else if (filePath.endsWith('.png')) {
+                    res.setHeader('Content-Type', 'image/png');
+                }
+                else if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) {
+                    res.setHeader('Content-Type', 'image/jpeg');
+                }
+                else if (filePath.endsWith('.gif')) {
+                    res.setHeader('Content-Type', 'image/gif');
+                }
+                else if (filePath.endsWith('.ico')) {
+                    res.setHeader('Content-Type', 'image/x-icon');
+                }
+                else if (filePath.endsWith('.webp')) {
+                    res.setHeader('Content-Type', 'image/webp');
+                }
+            }
+        }));
         app.get("*", (req, res) => {
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
             res.sendFile(path_1.default.join(distPath, "index.html"));
         });
         console.log('📍 serveStatic configurado.');
