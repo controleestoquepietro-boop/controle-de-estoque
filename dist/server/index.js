@@ -125,6 +125,11 @@ app.use((req, res, next) => {
             }
         }));
         app.get("*", (req, res) => {
+            // Se for uma requisição de API que não foi tratada, retornar 404
+            if (req.path.startsWith('/api/')) {
+                return res.status(404).json({ error: 'Rota de API não encontrada' });
+            }
+            // Caso contrário, servir o index.html para SPA routing
             res.setHeader('Content-Type', 'text/html; charset=utf-8');
             res.sendFile(path_1.default.join(distPath, "index.html"));
         });
