@@ -10,7 +10,7 @@
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true});\"",
     "build": "npm run clean && npm run build:app && npm run build:server",
     "build:app": "vite build",
-    "build:server": "tsc -p server/tsconfig.json",
+   "build:server": "tsc -p tsconfig.build.json",
     "start": "node dist/server/index.js"
   },
 

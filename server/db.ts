@@ -2,7 +2,7 @@
 import 'dotenv/config';
 import { Pool, neonConfig } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-serverless';
-import * as schema from "@shared/schema";
+import * as schema from "../shared/schema";
 
 // ⚠️ IMPORTANTE: WebSocket causava erro 401 com Supabase
 // Desabilitar WebSocket força o uso de HTTP (mais estável e seguro)

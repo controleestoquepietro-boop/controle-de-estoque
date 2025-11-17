@@ -6,7 +6,7 @@ import session from "express-session";
 import createMemoryStore from "memorystore";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
-import { insertUserSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema, insertAlimentoSchema, insertModeloProdutoSchema, type User } from "@shared/schema";
+import { insertUserSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema, insertAlimentoSchema, insertModeloProdutoSchema, type User } from "../shared/schema";
 import { supabase, supabaseService } from './supabaseClient';
 
 const MemoryStore = createMemoryStore(session);
@@ -252,7 +252,7 @@ app.post('/api/auth/register', async (req, res) => {
       // estiver confirmado. Em alguns fluxos o Supabase retorna sessão mesmo
       // que o email não esteja confirmado — evitamos autenticar automaticamente
       // para forçar o fluxo de confirmação por email.
-      const confirmed = data?.user && (data.user.email_confirmed_at || data.user.confirmed_at || data.user.confirmed);
+      const confirmed = data?.user && (data.user.email_confirmed_at || data.user.confirmed_at);
       if (confirmed && req.session) {
         req.session.userId = data.user?.id;
         await new Promise<void>((resolve, reject) => {
@@ -396,7 +396,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     // Bloquear login se o e-mail não estiver confirmado no Supabase
     try {
-      const confirmed = data?.user && (data.user.email_confirmed_at || data.user.confirmed_at || data.user.confirmed);
+      const confirmed = data?.user && (data.user.email_confirmed_at || data.user.confirmed_at);
       if (!confirmed) {
         return res.status(403).json({ message: 'E-mail não confirmado. Verifique sua caixa de entrada.' });
       }

@@ -1,5 +1,5 @@
 // Reference: javascript_database blueprint
-import { users, alimentos, auditLog, modelosProdutos, type User, type InsertUser, type Alimento, type InsertAlimento, type AuditLog, type InsertAuditLog, type ModeloProduto, type InsertModeloProduto } from "@shared/schema";
+import { users, alimentos, auditLog, modelosProdutos, type User, type InsertUser, type Alimento, type InsertAlimento, type AuditLog, type InsertAuditLog, type ModeloProduto, type InsertModeloProduto } from "../shared/schema";
 import { db } from "./db";
 import fs from 'fs';
 import path from 'path';
@@ -386,7 +386,7 @@ export class DatabaseStorage implements IStorage {
     const [alimento] = await db
       .update(alimentos)
       .set({
-        ...updateFields,
+        ...(updateFields as any),
         updatedAt: new Date(),
       })
       .where(eq(alimentos.id, id))
@@ -508,7 +508,7 @@ export class DatabaseStorage implements IStorage {
         quantidade: novaQuantidade,
         dataSaida: dataSaida || undefined,
         updatedAt: new Date(),
-      })
+      } as any)
       .where(eq(alimentos.id, id))
       .returning();
 
@@ -541,7 +541,7 @@ export class DatabaseStorage implements IStorage {
     // Inserir localmente primeiro (fonte de verdade do servidor)
     const [auditEntry] = await db
       .insert(auditLog)
-      .values(log)
+      .values(log as any)
       .returning();
 
     // Tentar sincronizar com Supabase em background usando service-role
