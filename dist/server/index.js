@@ -10,6 +10,8 @@ const routes_1 = require("./routes");
 const vite_1 = require("./vite");
 const path_1 = __importDefault(require("path"));
 const app = (0, express_1.default)();
+// 🔒 Confiar no proxy reverso (necessário para Render com HTTPS)
+app.set('trust proxy', 1);
 app.use((0, cors_1.default)({
     origin: process.env.NODE_ENV === 'production'
         ? process.env.FRONTEND_URL

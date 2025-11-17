@@ -15,6 +15,9 @@ declare global {
 
 const app = express();
 
+// 🔒 Confiar no proxy reverso (necessário para Render com HTTPS)
+app.set('trust proxy', 1);
+
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
     ? process.env.FRONTEND_URL 
