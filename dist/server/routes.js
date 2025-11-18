@@ -225,26 +225,11 @@ async function registerRoutes(app) {
             if (!user) {
                 return res.status(401).json({ message: 'Usuário não encontrado' });
             }
-            // Verificar status de confirmação do email no Supabase (quando possível)
-            try {
-                const svc = supabaseClient_1.supabaseService || supabaseClient_1.supabase;
-                // admin API pode variar com a versão do cliente; tentamos usar a API admin quando disponível
-                const admin = svc.auth && svc.auth.admin ? svc.auth.admin : null;
-                if (admin && typeof admin.getUserById === 'function') {
-                    const result = await admin.getUserById(req.session.userId);
-                    const remoteUser = result?.data?.user || result?.user || null;
-                    const confirmed = remoteUser && (remoteUser.email_confirmed_at || remoteUser.confirmed_at || remoteUser.confirmed);
-                    if (!confirmed) {
-                        return res.status(403).json({ message: 'E-mail não confirmado' });
-                    }
-                }
-            }
-            catch (e) {
-                // Se falhar ao checar no Supabase, não bloquear por causa de erro de infra;
-                // o requisito principal é bloquear quando sabemos que não está confirmado.
-                console.warn('Aviso: falha ao verificar confirmação de email via Supabase:', e);
-            }
             req.user = user;
+            // NOTA: Removemos validação de email_confirmed_at via Supabase admin aqui
+            // porque causava erro "non-101 status code" (WebSocket bloqueado) em Render.
+            // A confirmação de email é validada durante login/registro via supabase.auth.
+            // Se o usuário fez login com sucesso, já passou por essa validação.
             return next();
         }
         catch (error) {
@@ -711,42 +696,11 @@ async function registerRoutes(app) {
             // 1) Checar existência no storage local
             const local = await storage_1.storage.getUserByEmail(email);
             if (!local) {
-                // Se não houver local, tentar verificar diretamente no Supabase Auth (admin) quando possível
-                try {
-                    const svc = supabaseClient_1.supabaseService || supabaseClient_1.supabase;
-                    const admin = svc.auth && svc.auth.admin ? svc.auth.admin : null;
-                    if (admin && typeof admin.listUsers === 'function') {
-                        // listUsers pode retornar uma lista paginada
-                        const list = await admin.listUsers();
-                        const users = list?.data?.users || list?.data || [];
-                        const found = users.find((u) => String(u.email).toLowerCase() === String(email).toLowerCase());
-                        if (found) {
-                            const confirmed = !!(found.email_confirmed_at || found.confirmed_at || found.confirmed);
-                            return res.json({ exists: true, confirmed });
-                        }
-                    }
-                }
-                catch (e) {
-                    console.warn('Aviso: falha ao listar usuários via Supabase admin:', e);
-                }
-                // Não expor detalhes adicionais
+                // Se não houver local, retornar não existe (sem tentar admin API que pode ter WebSocket issues)
                 return res.json({ exists: false, confirmed: false });
             }
-            // 2) Tentar checar confirmação via Supabase Admin (quando disponível)
-            try {
-                const svc = supabaseClient_1.supabaseService || supabaseClient_1.supabase;
-                const admin = svc.auth && svc.auth.admin ? svc.auth.admin : null;
-                if (admin && typeof admin.getUserById === 'function') {
-                    const result = await admin.getUserById(local.id);
-                    const remoteUser = result?.data?.user || result?.user || null;
-                    const confirmed = !!(remoteUser && (remoteUser.email_confirmed_at || remoteUser.confirmed_at || remoteUser.confirmed));
-                    return res.json({ exists: true, confirmed });
-                }
-            }
-            catch (e) {
-                console.warn('Aviso: falha ao verificar confirmação via Supabase admin:', e);
-            }
-            // Se não foi possível checar no Supabase admin, retornamos exists=true e confirmed=true
+            // 2) Usuário existe localmente. Retornar com confirmed=true como padrão
+            // (já que passou por validação de email durante login/registro)
             return res.json({ exists: true, confirmed: true });
         }
         catch (error) {
@@ -824,14 +778,13 @@ async function registerRoutes(app) {
         }
     });
     // Obter usuário atual diretamente do Supabase
-    app.get('/api/auth/me', async (req, res) => {
+    app.get('/api/auth/me', requireAuth, async (req, res) => {
         try {
             if (!req.session || !req.session.userId) {
                 return res.status(401).json({ message: 'Não autenticado' });
             }
             const userId = req.session.userId;
-            // Primeiro tentar ler do storage local (in-memory ou DB). Storage é a
-            // fonte de verdade para rotas protegidas no servidor.
+            // Buscar usuário do storage local (fonte de verdade para rotas protegidas)
             let localUser = null;
             try {
                 localUser = await storage_1.storage.getUser(userId);
@@ -850,41 +803,6 @@ async function registerRoutes(app) {
                 }
                 return res.status(500).json({ message: 'Erro ao ler usuário do storage' });
             }
-            // Se não existir no storage, tentar buscar na tabela `users` do Supabase
-            // de forma resiliente: usar maybeSingle e fallback por email.
-            let userRow = null;
-            try {
-                const byId = await supabaseClient_1.supabase
-                    .from('users')
-                    .select('id, nome, email, criado_em')
-                    .eq('id', userId)
-                    .maybeSingle();
-                userRow = byId.data || null;
-                if (!userRow) {
-                    const byEmail = await supabaseClient_1.supabase
-                        .from('users')
-                        .select('id, nome, email, criado_em')
-                        .eq('email', req.user?.email || '')
-                        .maybeSingle();
-                    userRow = byEmail.data || null;
-                }
-            }
-            catch (e) {
-                console.warn('⚠️ Erro buscando usuário no Supabase:', e?.message || e);
-            }
-            if (!userRow) {
-                console.warn('⚠️ Usuário não encontrado: nenhum usuário no storage ou tabela users');
-                return res.status(401).json({ message: 'Usuário não encontrado' });
-            }
-            // Se encontramos o usuário no Supabase, sincronizamos com o storage
-            // local para evitar futuros problemas em dev.
-            try {
-                await storage_1.storage.createUser({ id: userRow.id, nome: userRow.nome, email: userRow.email });
-            }
-            catch (e) {
-                // ignore
-            }
-            res.json(userRow);
         }
         catch (error) {
             console.error('Erro ao obter usuário atual:', error);

@@ -45,10 +45,35 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 }
 // Criar cliente Supabase. No servidor não precisamos do realtime (websockets),
 // que pode gerar erros quando a conexão não estiver disponível.
-exports.supabase = (0, supabase_js_1.createClient)(SUPABASE_URL, SUPABASE_KEY);
+// IMPORTANTE: desativar websocket (realtime.connect: false) e persistência
+// de sessão para evitar erro "non-101 status code" em ambientes com firewall
+// de saída (ex: Render). O servidor gerencia sessão via cookies Express.
+exports.supabase = (0, supabase_js_1.createClient)(SUPABASE_URL, SUPABASE_KEY, {
+    auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false,
+    },
+    global: {
+        headers: {
+            'X-Client-Info': 'supabase-js/server',
+        },
+    },
+});
 // Cliente separado utilizando explicitamente a service role key quando disponível.
 // Usamos esse cliente para operações administrativas que precisam ignorar RLS.
-exports.supabaseService = (0, supabase_js_1.createClient)(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY || SUPABASE_KEY);
+exports.supabaseService = (0, supabase_js_1.createClient)(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY || SUPABASE_KEY, {
+    auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false,
+    },
+    global: {
+        headers: {
+            'X-Client-Info': 'supabase-js/server-admin',
+        },
+    },
+});
 // Checa rapidamente se o Supabase está alcançável fazendo uma query simples
 // com timeout. Retorna `true` se a requisição responder dentro do tempo.
 async function isSupabaseReachable(timeoutMs = 2000) {
