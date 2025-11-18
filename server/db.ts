@@ -3,6 +3,8 @@ import 'dotenv/config';
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from "../shared/schema";
+import dns from 'dns';
+import net from 'net';
 
 // Use native pg pooling - supports both direct and pooled connections
 // This avoids WebSocket issues on Render which blocks outbound connections
@@ -23,6 +25,16 @@ if (!connectionString) {
 console.log('📍 Conectando ao banco de dados via TCP Pool (pg)...');
 console.log('📍 Connection string configurado:', connectionString ? '✓' : '✗');
 
+// Log host/port details for diagnostics
+try {
+  const url = new URL(connectionString as string);
+  console.log('📡 DB host:', url.hostname);
+  console.log('🔢 DB port:', url.port || '5432');
+  console.log('🔐 DB user:', url.username ? '✓' : '✗');
+} catch (e) {
+  console.warn('⚠️ Não foi possível parsear connectionString para diagnóstico');
+}
+
 // Create native pg pool - doesn't use WebSocket
 const pool = new Pool({
   connectionString: connectionString,
@@ -30,6 +42,10 @@ const pool = new Pool({
   max: 1,  // Render/serverless doesn't support many concurrent connections
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
+  // Ensure SSL for cloud Postgres providers
+  ssl: {
+    rejectUnauthorized: false,
+  } as any,
 });
 
 pool.on('error', (err) => {
