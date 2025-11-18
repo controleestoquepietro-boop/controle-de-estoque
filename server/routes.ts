@@ -582,8 +582,36 @@ app.post('/api/auth/login', async (req, res) => {
       // Se não foi possível checar no Supabase admin, retornamos exists=true e confirmed=true
       return res.json({ exists: true, confirmed: true });
     } catch (error: any) {
-      console.error('Erro em check-email:', error);
+      // Serializar Error/Event de forma segura para aparecer nos logs
+      try {
+        if (error && typeof error === 'object') {
+          if ((error as any).stack) console.error('Erro em check-email (stack):', (error as any).stack);
+          else if ((error as any).message) console.error('Erro em check-email (message):', (error as any).message);
+          else if ((error as any).type) console.error('Erro em check-email (type):', (error as any).type, error);
+          else console.error('Erro em check-email (obj):', JSON.stringify(error));
+        } else {
+          console.error('Erro em check-email:', String(error));
+        }
+      } catch (e) {
+        console.error('Erro ao logar erro em check-email:', e, 'original:', error);
+      }
       return res.status(500).json({ message: 'Erro interno' });
+    }
+  });
+
+  // Debug: testar conectividade com Supabase (usa service role quando disponível)
+  app.get('/api/debug/supabase', async (req, res) => {
+    try {
+      const svc = supabaseService || supabase;
+      // Tentar uma operação simples que exige conexão e permissões
+      try {
+        const test = await svc.from('users').select('id').limit(1).maybeSingle();
+        return res.json({ ok: true, result: test?.data || null, error: test?.error || null });
+      } catch (e) {
+        return res.status(500).json({ ok: false, error: String(e) });
+      }
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: String(e) });
     }
   });
 
