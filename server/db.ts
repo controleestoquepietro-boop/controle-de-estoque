@@ -35,6 +35,22 @@ try {
   console.warn('⚠️ Não foi possível parsear connectionString para diagnóstico');
 }
 
+// If the environment provides an explicit IPv4 host, prefer it (useful on platforms
+// where IPv6 outbound is blocked). Set SUPABASE_DB_HOST_IPV4 to force IPv4 address.
+if (process.env.SUPABASE_DB_HOST_IPV4) {
+  try {
+    const parsed = new URL(connectionString as string);
+    const forced = new URL(connectionString as string);
+    forced.hostname = process.env.SUPABASE_DB_HOST_IPV4;
+    // keep original port if present
+    if (parsed.port) forced.port = parsed.port;
+    connectionString = forced.toString();
+    console.log('➡️ Using SUPABASE_DB_HOST_IPV4, forcing DB host to', process.env.SUPABASE_DB_HOST_IPV4);
+  } catch (e) {
+    console.warn('⚠️ Falha ao aplicar SUPABASE_DB_HOST_IPV4:', e);
+  }
+}
+
 // Create native pg pool - doesn't use WebSocket
 const pool = new Pool({
   connectionString: connectionString,
