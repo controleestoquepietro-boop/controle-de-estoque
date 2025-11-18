@@ -5,6 +5,9 @@ const drizzle_orm_1 = require("drizzle-orm");
 const pg_core_1 = require("drizzle-orm/pg-core");
 const drizzle_orm_2 = require("drizzle-orm");
 const drizzle_zod_1 = require("drizzle-zod");
+// Pragmatic wrapper to avoid TypeScript/Drizzle typing conflicts during build.
+// Use `_create` when extending schemas to prevent $drizzleTypeError from breaking tsc.
+const _create = drizzle_zod_1.createInsertSchema;
 const zod_1 = require("zod");
 // Tabela de usuários
 exports.users = (0, pg_core_1.pgTable)("users", {
@@ -96,7 +99,7 @@ exports.insertUserSchema = zod_1.z.object({
     password: zod_1.z.string().min(6, "Senha deve ter pelo menos 6 caracteres"),
     nome: zod_1.z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
 });
-exports.insertModeloProdutoSchema = (0, drizzle_zod_1.createInsertSchema)(exports.modelosProdutos).merge(zod_1.z.object({
+exports.insertModeloProdutoSchema = _create(exports.modelosProdutos).merge(zod_1.z.object({
     codigoProduto: zod_1.z.string().min(1, "Código do produto é obrigatório"),
     descricao: zod_1.z.string().min(1, "Descrição é obrigatória"),
     temperatura: zod_1.z.string().min(1, "Temperatura é obrigatória"),
@@ -114,7 +117,7 @@ exports.insertModeloProdutoSchema = (0, drizzle_zod_1.createInsertSchema)(export
     cadastradoPor: zod_1.z.string().min(1, "Cadastrado por é obrigatório").optional(),
 }));
 // Schema de alimento SEM departamento
-exports.insertAlimentoSchema = (0, drizzle_zod_1.createInsertSchema)(exports.alimentos).merge(zod_1.z.object({
+exports.insertAlimentoSchema = _create(exports.alimentos).merge(zod_1.z.object({
     quantidade: zod_1.z.number().min(0, "Quantidade deve ser maior ou igual a 0"),
     shelfLife: zod_1.z.number().min(1, "Shelf life deve ser maior que 0"),
     pesoPorCaixa: zod_1.z.number().nullable().optional(),
@@ -140,7 +143,7 @@ exports.insertAlimentoSchema = (0, drizzle_zod_1.createInsertSchema)(exports.ali
     // enviar esse campo (o servidor adiciona `req.user.id` antes de validar)
     cadastradoPor: zod_1.z.string().min(1, "ID do usuário é obrigatório").optional(),
 }));
-exports.insertAuditLogSchema = (0, drizzle_zod_1.createInsertSchema)(exports.auditLog).merge(zod_1.z.object({
+exports.insertAuditLogSchema = _create(exports.auditLog).merge(zod_1.z.object({
     action: zod_1.z.string().min(1, "Ação é obrigatória"),
     userId: zod_1.z.string().min(1, "ID do usuário é obrigatório"),
     userName: zod_1.z.string().min(1, "Nome do usuário é obrigatório"),

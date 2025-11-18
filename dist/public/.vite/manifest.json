@@ -1,0 +1,18 @@
+{
+  "index.html": {
+    "file": "assets/index-BkY5-eCp.js",
+    "name": "index",
+    "src": "index.html",
+    "isEntry": true,
+    "css": [
+      "assets/index-C-i8OEfp.css"
+    ],
+    "assets": [
+      "assets/LOGO-PRIETO_1761688931089-CtNaJopD.png"
+    ]
+  },
+  "src/assets/LOGO-PRIETO_1761688931089.png": {
+    "file": "assets/LOGO-PRIETO_1761688931089-CtNaJopD.png",
+    "src": "src/assets/LOGO-PRIETO_1761688931089.png"
+  }
+}
