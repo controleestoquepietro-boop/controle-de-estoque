@@ -5,6 +5,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from "../shared/schema";
 import dns from 'dns';
 import net from 'net';
+import { promisify } from 'util';
 
 // Use native pg pooling - supports both direct and pooled connections
 // This avoids WebSocket issues on Render which blocks outbound connections
@@ -51,18 +52,25 @@ if (process.env.SUPABASE_DB_HOST_IPV4) {
   }
 }
 
-// Create native pg pool - doesn't use WebSocket
-const pool = new Pool({
-  connectionString: connectionString,
+// Build pool options. For reliable deploys on platforms that block IPv6 (Render),
+// prefer using an explicit IPv4 host via env `SUPABASE_DB_HOST_IPV4` when needed.
+const poolOptions: any = {
   // Pool configuration to handle serverless environments
-  max: 1,  // Render/serverless doesn't support many concurrent connections
+  max: 1,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
-  // Ensure SSL for cloud Postgres providers
-  ssl: {
-    rejectUnauthorized: false,
-  } as any,
-});
+  ssl: { rejectUnauthorized: false },
+  connectionString,
+};
+
+if (!process.env.SUPABASE_DB_HOST_IPV4) {
+  console.log('ℹ️ To avoid IPv6 ENETUNREACH on platforms that block IPv6, set SUPABASE_DB_HOST_IPV4 to an IPv4 address for the DB host');
+} else {
+  console.log('ℹ️ SUPABASE_DB_HOST_IPV4 provided, pool will use forced IPv4 host');
+}
+
+// Create native pg pool - doesn't use WebSocket
+const pool = new Pool(poolOptions);
 
 pool.on('error', (err) => {
   console.error('❌ Erro na pool PostgreSQL:', err);
