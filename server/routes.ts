@@ -95,8 +95,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const expected = crypto.createHmac('sha256', secret).update(uid).digest('hex');
             if (Buffer.from(sig, 'hex').length === Buffer.from(expected, 'hex').length &&
                 crypto.timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'))) {
+              // Garantir que a sessão exista e seja persistida no store local
               if (!req.session) req.session = {};
               req.session.userId = uid;
+
+              // Tentar salvar a sessão atual para que o store receba a informação
+              try {
+                if (typeof req.session.save === 'function') {
+                  req.session.save((saveErr: any) => {
+                    if (saveErr) {
+                      console.warn('Aviso: falha ao salvar sessão a partir do cookie assinado:', saveErr);
+                    } else {
+                      try {
+                        // Reenviar cookie de sessão (refresh) para o cliente
+                        const cookieName = process.env.SESSION_COOKIE_NAME || 'session_id';
+                        const cookieOptions: any = {
+                          httpOnly: true,
+                          secure: process.env.NODE_ENV === 'production',
+                          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+                          path: '/',
+                          maxAge: 7 * 24 * 60 * 60 * 1000,
+                        };
+                        if (req.sessionID) {
+                          res.cookie(cookieName, req.sessionID, cookieOptions);
+                        }
+                        // também reaplicar o cookie assinado (refresh)
+                        try {
+                          const signedCookieName = process.env.SIGNED_COOKIE_NAME || 'shelf_uid';
+                          const sigValue = `${uid}.${crypto.createHmac('sha256', secret).update(String(uid)).digest('hex')}`;
+                          res.cookie(signedCookieName, sigValue, cookieOptions);
+                        } catch (e) {
+                          // ignore
+                        }
+                      } catch (e) {
+                        // ignore
+                      }
+                    }
+                  });
+                }
+              } catch (e) {
+                console.warn('Aviso: erro ao tentar persistir sessão do cookie assinado:', e);
+              }
             }
           } catch (e) {
             console.warn('Aviso: falha ao verificar cookie assinado:', e);
@@ -464,16 +503,15 @@ app.post('/api/auth/login', async (req, res) => {
       console.warn('⚠️ Não foi possível buscar metadados do usuário:', e?.message || e);
     }
 
-    // 3️⃣ Criar sessão Express
-    // A sessão será exposta via o cookie gerenciado pelo express-session.
-    req.session.userId = data.user.id;
-
+    // 3️⃣ Criar sessão Express: regenerar e persistir a sessão para garantir
+    // que um sessionID válido seja criado e armazenado no store antes da
+    // resposta — evita problemas com proxies/redeploys e garante que o
+    // cookie enviado ao cliente corresponda à sessão persistida.
+    try {
       // Garantir sincronização com o storage local em desenvolvimento
       try {
         const existing = await storage.getUser(data.user.id);
         if (!existing) {
-          // Se não há usuário no storage (in-memory), criamos usando os
-          // metadados que temos.
           await storage.createUser({ id: data.user.id, nome: userRow?.nome || data.user.user_metadata?.nome || '', email: userRow?.email || data.user.email } as any);
           console.log('✅ Usuário sincronizado no storage local para desenvolvimento');
         }
@@ -481,55 +519,84 @@ app.post('/api/auth/login', async (req, res) => {
         console.warn('⚠️ Erro ao sincronizar usuário no storage local:', e);
       }
 
-    // 4️⃣ Retornar sucesso — garantir que a sessão foi persistida antes de
-    // enviar a resposta (evita cenários onde o cookie não é enviado pelo
-    // renderer porque a sessão ainda não foi gravada).
-    try {
-      req.session.save((saveErr: any) => {
-        if (saveErr) console.warn('Erro ao salvar sessão:', saveErr);
-
-        // Garantir que o cookie da sessão seja enviado explicitamente.
-        // Em alguns ambientes (proxy/reverse-proxy) o cookie pode não
-        // ser incluído automaticamente na resposta; forçamos aqui
-        // para melhorar confiabilidade (o valor é o sessionID gerado
-        // pelo express-session).
-          try {
-          const cookieName = process.env.SESSION_COOKIE_NAME || 'session_id';
-          const cookieOptions: any = {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-            path: '/',
-            maxAge: 7 * 24 * 60 * 60 * 1000,
-          };
-          res.cookie(cookieName, req.sessionID, cookieOptions);
-
-          // Adicionar cookie assinado (stateless fallback) com userId
-          try {
-            const signedCookieName = process.env.SIGNED_COOKIE_NAME || 'shelf_uid';
-            const secret = process.env.SESSION_SECRET || 'shelf-aid-secret-key-change-in-production';
-            const uid = data.user?.id || (userRow && userRow.id) || '';
-            if (uid) {
-              const sig = crypto.createHmac('sha256', secret).update(String(uid)).digest('hex');
-              const signedValue = `${uid}.${sig}`;
-              // Manter mesmas flags de cookie
-              res.cookie(signedCookieName, signedValue, cookieOptions);
+      await new Promise<void>((resolve) => {
+        // Regenerar sessão para garantir sessionID limpo
+        try {
+          req.session.regenerate((regErr: any) => {
+            if (regErr) {
+              console.warn('Aviso: falha em session.regenerate:', regErr);
+              // fallback: tentar setar userId na sessão atual
+              try { req.session.userId = data.user.id; } catch (_) {}
+            } else {
+              try { req.session.userId = data.user.id; } catch (_) {}
             }
-          } catch (e) {
-            console.warn('Aviso: falha ao setar cookie assinado:', e);
-          }
-        } catch (e) {
-          console.warn('Aviso: falha ao forçar envio de cookie de sessão:', e);
-        }
 
-        res.json({
-          message: "Login realizado com sucesso!",
-          user: userRow || data.user,
-          session: data.session,
-        });
+            // Salvar sessão e então enviar cookies explicitamente
+            try {
+              req.session.save((saveErr: any) => {
+                if (saveErr) console.warn('Erro ao salvar sessão:', saveErr);
+
+                try {
+                  const cookieName = process.env.SESSION_COOKIE_NAME || 'session_id';
+                  const cookieOptions: any = {
+                    httpOnly: true,
+                    secure: process.env.NODE_ENV === 'production',
+                    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+                    path: '/',
+                    maxAge: 7 * 24 * 60 * 60 * 1000,
+                  };
+                  if (req.sessionID) res.cookie(cookieName, req.sessionID, cookieOptions);
+
+                  // Adicionar cookie assinado (stateless fallback) com userId
+                  try {
+                    const signedCookieName = process.env.SIGNED_COOKIE_NAME || 'shelf_uid';
+                    const secret = process.env.SESSION_SECRET || 'shelf-aid-secret-key-change-in-production';
+                    const uid = data.user?.id || (userRow && userRow.id) || '';
+                    if (uid) {
+                      const sig = crypto.createHmac('sha256', secret).update(String(uid)).digest('hex');
+                      const signedValue = `${uid}.${sig}`;
+                      res.cookie(signedCookieName, signedValue, cookieOptions);
+                    }
+                  } catch (e) {
+                    console.warn('Aviso: falha ao setar cookie assinado:', e);
+                  }
+                } catch (e) {
+                  console.warn('Aviso: falha ao forçar envio de cookie de sessão:', e);
+                }
+
+                // Responder ao cliente
+                try {
+                  res.json({
+                    message: "Login realizado com sucesso!",
+                    user: userRow || data.user,
+                    session: data.session,
+                  });
+                } catch (e) {
+                  console.warn('Aviso: falha ao enviar resposta após login:', e);
+                }
+
+                return resolve();
+              });
+            } catch (e) {
+              console.warn('Erro ao salvar sessão (outer):', e);
+              try {
+                res.json({ message: "Login realizado com sucesso!", user: userRow || data.user, session: data.session });
+              } catch (_) {}
+              return resolve();
+            }
+          });
+        } catch (e) {
+          console.warn('Erro ao tentar regenerar sessão:', e);
+          try {
+            req.session.userId = data.user.id;
+          } catch (_) {}
+          try { res.json({ message: "Login realizado com sucesso!", user: userRow || data.user, session: data.session }); } catch (_) {}
+          return resolve();
+        }
       });
     } catch (e) {
       // fallback simples
+      console.warn('Erro no fluxo de sessão após login:', e);
       res.json({
         message: "Login realizado com sucesso!",
         user: userRow || data.user,

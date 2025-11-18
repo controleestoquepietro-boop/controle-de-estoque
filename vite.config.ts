@@ -15,15 +15,22 @@ export default defineConfig({
     ]
   },
   optimizeDeps: {
+    include: ['@tanstack/react-query'],
     exclude: ['@radix-ui/react-tooltip']
   },
   build: {
+    manifest: true,
     outDir: '../dist/public',
     emptyOutDir: true,
     sourcemap: true,
     chunkSizeWarningLimit: 1600,
     rollupOptions: {
-      input: path.resolve(__dirname, 'client/index.html')
+      input: path.resolve(__dirname, 'client/index.html'),
+      output: {
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]'
+      }
     }
   },
   server: {
