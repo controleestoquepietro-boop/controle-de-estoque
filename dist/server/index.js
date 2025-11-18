@@ -13,11 +13,30 @@ const app = (0, express_1.default)();
 // 🔒 Confiar no proxy reverso (necessário para Render com HTTPS)
 app.set('trust proxy', 1);
 app.use((0, cors_1.default)({
-    origin: process.env.NODE_ENV === 'production'
-        ? process.env.FRONTEND_URL
-        : ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"],
+    // Em produção, permitir explicitamente a origem do frontend (se configurada)
+    // ou refletir a origem da requisição para permitir cookies quando FRONTEND_URL
+    // não estiver presente (útil em setups com proxies e domínios dinâmicos).
+    origin: (origin, callback) => {
+        if (process.env.NODE_ENV !== 'production') {
+            return callback(null, true);
+        }
+        const frontend = process.env.FRONTEND_URL;
+        if (frontend && typeof origin === 'string' && origin === frontend) {
+            return callback(null, true);
+        }
+        // Se não houver FRONTEND_URL definido, refletir a origem (aceitar)
+        if (!frontend)
+            return callback(null, true);
+        // Caso contrário bloquear
+        return callback(new Error('CORS origin denied'));
+    },
     credentials: true, // 👈 Permite envio de cookies
 }));
+// Assegurar header de credenciais em todas as respostas (compatibilidade)
+app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    next();
+});
 // 🧩 Permite o Express ler cookies da requisição
 app.use((0, cookie_parser_1.default)());
 // Allow larger payloads for imports (Excel -> JSON arrays). Limit set for development and reasonable imports.

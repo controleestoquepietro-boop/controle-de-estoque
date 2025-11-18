@@ -36,7 +36,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           httpOnly: true,
           // Em produção (Render), usar secure=true e HTTPS
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
+          // Para permitir cookies cross-site (frontend separado), usar 'none' em produção.
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
           path: '/',
         },
 
@@ -465,12 +466,12 @@ app.post('/api/auth/login', async (req, res) => {
         // ser incluído automaticamente na resposta; forçamos aqui
         // para melhorar confiabilidade (o valor é o sessionID gerado
         // pelo express-session).
-        try {
+          try {
           const cookieName = process.env.SESSION_COOKIE_NAME || 'session_id';
           const cookieOptions: any = {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
             path: '/',
             maxAge: 7 * 24 * 60 * 60 * 1000,
           };

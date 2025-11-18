@@ -64,7 +64,8 @@ async function registerRoutes(app) {
             httpOnly: true,
             // Em produção (Render), usar secure=true e HTTPS
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
+            // Para permitir cookies cross-site (frontend separado), usar 'none' em produção.
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
             path: '/',
         },
     }));
@@ -476,7 +477,7 @@ async function registerRoutes(app) {
                         const cookieOptions = {
                             httpOnly: true,
                             secure: process.env.NODE_ENV === 'production',
-                            sameSite: 'lax',
+                            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
                             path: '/',
                             maxAge: 7 * 24 * 60 * 60 * 1000,
                         };
