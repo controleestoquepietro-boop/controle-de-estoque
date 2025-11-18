@@ -1,19 +1,17 @@
 // Reference: javascript_database blueprint
 import 'dotenv/config';
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-serverless';
+import { Pool } from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from "../shared/schema";
 
-// ⚠️ CRÍTICO: Desabilitar WebSocket
-// No Render, WebSocket é bloqueado por firewall de saída.
-// Usar apenas HTTP/HTTPS para conexões com Neon.
-neonConfig.webSocketConstructor = undefined;
+// Use native pg pooling - supports both direct and pooled connections
+// This avoids WebSocket issues on Render which blocks outbound connections
 
-// Aceita certificados auto-assinados/expirados em dev
-// Em ambientes de desenvolvimento/empacotado podemos aceitar certificados auto-assinados.
-(neonConfig as any).pipelineTLS = { rejectUnauthorized: false } as any;
+let connectionString = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
 
-const connectionString = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+// Keep port 5432 (TCP direct connection is fine for pg library)
+// Pooling is handled by pg's native pool, not Supabase pooler
+console.log('📍 Using TCP connection (port 5432) - pooling handled by pg library...');
 
 if (!connectionString) {
   console.error('❌ SUPABASE_DB_URL or DATABASE_URL not configured');
@@ -22,17 +20,23 @@ if (!connectionString) {
   throw new Error('SUPABASE_DB_URL or DATABASE_URL must be set');
 }
 
-console.log('📍 Conectando ao banco de dados via Neon...');
+console.log('📍 Conectando ao banco de dados via TCP Pool (pg)...');
 console.log('📍 Connection string configurado:', connectionString ? '✓' : '✗');
 
-// Criar pool com tratamento de erro
-let pool: Pool;
-try {
-  pool = new Pool({ connectionString });
-  console.log('✅ Pool de conexão Neon criado com sucesso');
-} catch (e) {
-  console.error('❌ Falha ao criar pool Neon:', e);
-  throw e;
-}
+// Create native pg pool - doesn't use WebSocket
+const pool = new Pool({
+  connectionString: connectionString,
+  // Pool configuration to handle serverless environments
+  max: 1,  // Render/serverless doesn't support many concurrent connections
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
+});
 
-export const db = drizzle({ client: pool, schema });
+pool.on('error', (err) => {
+  console.error('❌ Erro na pool PostgreSQL:', err);
+});
+
+// Drizzle ORM with pg pool
+export const db = drizzle(pool, { schema });
+
+console.log('✅ Cliente PostgreSQL (pg pool) inicializado com sucesso');

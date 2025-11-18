@@ -5,15 +5,13 @@
   "description": "Controle de Estoque - Web app (preparado para deploy)",
   "author": "",
   "license": "MIT",
-
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true});\"",
     "build": "npm run clean && npm run build:app && npm run build:server",
     "build:app": "vite build",
-   "build:server": "tsc -p tsconfig.build.json",
+    "build:server": "tsc -p tsconfig.build.json",
     "start": "node dist/server/index.js"
   },
-
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",
@@ -48,6 +46,7 @@
     "@supabase/supabase-js": "^2.78.0",
     "@tanstack/react-query": "^5.60.5",
     "@types/bcryptjs": "^2.4.6",
+    "@vercel/postgres": "^0.10.0",
     "adm-zip": "^0.5.16",
     "bcryptjs": "^3.0.2",
     "class-variance-authority": "^0.7.1",
@@ -71,6 +70,7 @@
     "next-themes": "^0.4.6",
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
+    "pg": "^8.16.3",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",
     "react-dom": "^18.3.1",
@@ -89,7 +89,6 @@
     "zod": "^3.25.76",
     "zod-validation-error": "^3.4.0"
   },
-
   "devDependencies": {
     "@replit/vite-plugin-dev-banner": "^0.1.1",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",
@@ -122,7 +121,6 @@
     "vite": "^5.4.21",
     "wait-on": "^7.2.0"
   },
-
   "optionalDependencies": {
     "bufferutil": "^4.0.8"
   }

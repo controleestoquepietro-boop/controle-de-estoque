@@ -36,29 +36,34 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.db = void 0;
 // Reference: javascript_database blueprint
 require("dotenv/config");
-const serverless_1 = require("@neondatabase/serverless");
-const neon_serverless_1 = require("drizzle-orm/neon-serverless");
+const pg_1 = require("pg");
+const node_postgres_1 = require("drizzle-orm/node-postgres");
 const schema = __importStar(require("../shared/schema"));
-// ⚠️ IMPORTANTE: WebSocket causava erro 401 com Supabase
-// Desabilitar WebSocket força o uso de HTTP (mais estável e seguro)
-// neonConfig.webSocketConstructor = ws;
-// Aceita certificados auto-assinados/expirados em dev/empacotado
-// Em alguns ambientes (desenvolvimento/empacotado) precisamos aceitar
-// certificados auto-assinados; a tipagem exposta pela biblioteca pode
-// esperar um booleano — fazemos um cast para 'any' para manter o
-// comportamento desejado sem quebrar a tipagem.
-serverless_1.neonConfig.pipelineTLS = { rejectUnauthorized: false };
-const connectionString = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+// Use native pg pooling - supports both direct and pooled connections
+// This avoids WebSocket issues on Render which blocks outbound connections
+let connectionString = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+// Keep port 5432 (TCP direct connection is fine for pg library)
+// Pooling is handled by pg's native pool, not Supabase pooler
+console.log('📍 Using TCP connection (port 5432) - pooling handled by pg library...');
 if (!connectionString) {
-    throw new Error("SUPABASE_DB_URL or DATABASE_URL must be set. Did you forget to configure Supabase?");
+    console.error('❌ SUPABASE_DB_URL or DATABASE_URL not configured');
+    console.error('DATABASE_URL:', process.env.DATABASE_URL ? '✓' : '✗');
+    console.error('SUPABASE_DB_URL:', process.env.SUPABASE_DB_URL ? '✓' : '✗');
+    throw new Error('SUPABASE_DB_URL or DATABASE_URL must be set');
 }
-// Opcionalmente usa um pool local se a conexão remota falhar
-let pool;
-try {
-    pool = new serverless_1.Pool({ connectionString });
-}
-catch (e) {
-    console.error('[db] Falha na conexão remota:', e);
-    pool = new serverless_1.Pool({ connectionString: 'sqlite::memory:' }); // fallback local
-}
-exports.db = (0, neon_serverless_1.drizzle)({ client: pool, schema });
+console.log('📍 Conectando ao banco de dados via TCP Pool (pg)...');
+console.log('📍 Connection string configurado:', connectionString ? '✓' : '✗');
+// Create native pg pool - doesn't use WebSocket
+const pool = new pg_1.Pool({
+    connectionString: connectionString,
+    // Pool configuration to handle serverless environments
+    max: 1, // Render/serverless doesn't support many concurrent connections
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+});
+pool.on('error', (err) => {
+    console.error('❌ Erro na pool PostgreSQL:', err);
+});
+// Drizzle ORM with pg pool
+exports.db = (0, node_postgres_1.drizzle)(pool, { schema });
+console.log('✅ Cliente PostgreSQL (pg pool) inicializado com sucesso');

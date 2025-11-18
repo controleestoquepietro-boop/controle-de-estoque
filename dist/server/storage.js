@@ -559,7 +559,9 @@ class InMemoryStorage {
         // não aguardar (não-bloqueante). Em endpoints críticos podemos aguardar
         // manualmente `storageReadyPromise` se desejarmos garantir que os dados
         // foram carregados antes de responder.
-        this.bootstrap().catch(err => console.warn('Falha no bootstrap do InMemoryStorage:', err));
+        // DESATIVADO: bootstrap().catch(...) causava WebSocket errors em Render
+        console.log('InMemoryStorage: inicializado sem bootstrap automático (Render não suporta WebSocket)');
+        this.storageReadyPromise = Promise.resolve();
     }
     async bootstrap() {
         // evita múltiplos bootstraps concorrentes
@@ -833,38 +835,8 @@ class InMemoryStorage {
             dataAtualizacao: new Date(),
         };
         this.modelos.push(modelo);
-        // Persistir no Supabase de forma síncrona quando possível, para garantir
-        // que a UI que consulta diretamente o Supabase veja os modelos importados.
-        try {
-            if (await (0, supabaseClient_1.isSupabaseReachable)()) {
-                const payload = {
-                    codigo_produto: modelo.codigoProduto,
-                    descricao: modelo.descricao || null,
-                    temperatura: modelo.temperatura || null,
-                    shelf_life: modelo.shelfLife || null,
-                    unidade_padrao: modelo.unidadePadrao || null,
-                    peso_por_caixa: modelo.pesoPorCaixa || null,
-                    gtin: modelo.gtin || null,
-                    peso_embalagem: modelo.pesoEmbalagem || null,
-                    empresa: modelo.empresa || null,
-                    cadastrado_por: modelo.cadastradoPor || 'SISTEMA',
-                };
-                // Tentar usar o cliente de serviço quando disponível
-                const client = (typeof supabaseClient_1.supabaseService !== 'undefined' && supabaseClient_1.supabaseService) ? supabaseClient_1.supabaseService : supabaseClient_1.supabase;
-                const { data: inserted, error } = await client.from('modelos_produtos').insert([payload]).select().maybeSingle();
-                if (error) {
-                    console.warn('Falha ao criar modelo no Supabase:', error.message || error);
-                }
-                else if (inserted && inserted.id) {
-                    // Atualiza o ID local para o ID remoto para evitar inconsistências
-                    modelo.id = inserted.id;
-                    this.nextId = Math.max(this.nextId, Number(inserted.id) + 1);
-                }
-            }
-        }
-        catch (e) {
-            console.warn('Erro ao persistir createModeloProduto no Supabase:', e);
-        }
+        // Supabase sync desativado para evitar WebSocket errors em Render
+        // Frontend pode consultar diretamente via GET /api/modelos-produtos via Drizzle
         return modelo;
     }
     async updateModeloProduto(id, data) {
