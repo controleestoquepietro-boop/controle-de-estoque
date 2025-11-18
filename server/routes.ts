@@ -80,6 +80,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // ignore
     }
 
+    // Fallback stateless: reconstruir sessão via cookie assinado quando a
+    // store em memória não estiver disponível entre instâncias (ex: Render).
+    try {
+      const signedCookieName = process.env.SIGNED_COOKIE_NAME || 'shelf_uid';
+      const signed = req.cookies && req.cookies[signedCookieName];
+      if ((!req.session || !req.session.userId) && signed && typeof signed === 'string') {
+        const parts = signed.split('.');
+        if (parts.length === 2) {
+          const uid = parts[0];
+          const sig = parts[1];
+          const secret = process.env.SESSION_SECRET || 'shelf-aid-secret-key-change-in-production';
+          try {
+            const expected = crypto.createHmac('sha256', secret).update(uid).digest('hex');
+            if (Buffer.from(sig, 'hex').length === Buffer.from(expected, 'hex').length &&
+                crypto.timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'))) {
+              if (!req.session) req.session = {};
+              req.session.userId = uid;
+            }
+          } catch (e) {
+            console.warn('Aviso: falha ao verificar cookie assinado:', e);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Aviso: erro no fallback de cookie assinado:', e);
+    }
+
     // DEBUG: mostrar informações da sessão para diagnosticar 401
     try {
       console.log('==== DEBUG INFO ====');
@@ -476,6 +503,21 @@ app.post('/api/auth/login', async (req, res) => {
             maxAge: 7 * 24 * 60 * 60 * 1000,
           };
           res.cookie(cookieName, req.sessionID, cookieOptions);
+
+          // Adicionar cookie assinado (stateless fallback) com userId
+          try {
+            const signedCookieName = process.env.SIGNED_COOKIE_NAME || 'shelf_uid';
+            const secret = process.env.SESSION_SECRET || 'shelf-aid-secret-key-change-in-production';
+            const uid = data.user?.id || (userRow && userRow.id) || '';
+            if (uid) {
+              const sig = crypto.createHmac('sha256', secret).update(String(uid)).digest('hex');
+              const signedValue = `${uid}.${sig}`;
+              // Manter mesmas flags de cookie
+              res.cookie(signedCookieName, signedValue, cookieOptions);
+            }
+          } catch (e) {
+            console.warn('Aviso: falha ao setar cookie assinado:', e);
+          }
         } catch (e) {
           console.warn('Aviso: falha ao forçar envio de cookie de sessão:', e);
         }
@@ -623,6 +665,13 @@ app.post('/api/auth/login', async (req, res) => {
     req.session.destroy((err) => {
       if (err) {
         return res.status(500).json({ message: 'Erro ao fazer logout' });
+      }
+      // Limpar também o cookie assinado de fallback
+      try {
+        const signedCookieName = process.env.SIGNED_COOKIE_NAME || 'shelf_uid';
+        res.clearCookie(signedCookieName, { path: '/', secure: process.env.NODE_ENV === 'production', sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax' });
+      } catch (e) {
+        // ignore
       }
       res.json({ message: 'Logout realizado com sucesso' });
     });
