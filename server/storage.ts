@@ -172,15 +172,12 @@ export class DatabaseStorage implements IStorage {
         alertas_config: alimento.alertasConfig,
       };
 
-      // 3. Tentar inserir no Supabase PRIMEIRO (Supabase-first)
-      const isReachable = await isSupabaseReachable(2000);
+      // 3. Supabase sync disabled - using Drizzle only
+      const isReachable = false; // Supabase sync disabled
       if (isReachable) {
         try {
-          const { data: supaAlimento, error: supaError } = await supabase
-            .from('alimentos')
-            .insert(supabasePayload)
-            .select()
-            .maybeSingle();
+          // Placeholder: old Supabase code removed
+          const { data: supaAlimento, error: supaError } = { data: null, error: null };
 
           if (supaError) {
             console.warn('⚠️ Erro ao inserir no Supabase:', supaError.message);
@@ -314,56 +311,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   private async processPendingQueue(): Promise<void> {
-    if (this.processingPending) return;
-    this.processingPending = true;
-    try {
-      const reachable = await isSupabaseReachable(2000);
-      if (!reachable) {
-        console.log('⏳ Supabase não alcançável ainda — fila aguardando conexão');
-        return;
-      }
-
-      const pending = await this.readPendingFromFile();
-      if (!pending || pending.length === 0) return;
-
-      console.log(`🔄 Processando ${pending.length} item(ns) pendente(s)...`);
-      const remaining: any[] = [];
-
-      for (const p of pending) {
-        try {
-          const { data, error } = await supabase
-            .from('alimentos')
-            .insert(p.payload)
-            .select()
-            .maybeSingle();
-
-          if (error) {
-            console.warn('❌ Falha ao sincronizar pendente:', error.message);
-            remaining.push(p);
-          } else {
-            console.log('✅ Sincronizado pendente:', data?.id || 'ok');
-          }
-        } catch (e) {
-          console.warn('❌ Erro ao sincronizar pendente:', e);
-          remaining.push(p);
-        }
-      }
-
-      await this.writePendingToFile(remaining);
-      if (remaining.length < pending.length) {
-        console.log(`✅ ${pending.length - remaining.length} item(ns) sincronizado(s), ${remaining.length} pendente(s)`);
-      }
-    } catch (e) {
-      console.warn('Erro ao processar fila pendente:', e);
-    } finally {
-      this.processingPending = false;
-    }
+    // Supabase sync removed - pending queue processing disabled
+    // All operations now go through Drizzle ORM only
+    this.processingPending = false;
+    return;
   }
 
   private startPendingSyncScheduler(): void {
     try {
-      setInterval(() => this.processPendingQueue().catch(err => console.warn('Erro no scheduler pending:', err)), 10000);
-      console.log('✅ Scheduler de sincronização pendente iniciado (10s)');
+      // Scheduler disabled: Supabase sync removed, using Drizzle only
+      console.log('📝 Scheduler de sincronização pendente DESABILITADO (usando Drizzle apenas)');
     } catch (e) {
       console.warn('Falha ao iniciar scheduler:', e);
     }
@@ -551,7 +508,7 @@ export class DatabaseStorage implements IStorage {
     // Tentar sincronizar com Supabase em background usando service-role
     (async () => {
       try {
-        if (!(await isSupabaseReachable())) return;
+        if (true) return; // Supabase sync disabled
 
         const payload: any = {
           alimento_id: log.alimentoId || null,
@@ -931,10 +888,10 @@ class InMemoryStorage implements IStorage {
     if (idx === -1) return undefined;
     this.modelos[idx] = { ...this.modelos[idx], ...data };
     
-    // Persistir no Supabase
+    // Persistir no Supabase (DISABLED - using Drizzle only)
     (async () => {
       try {
-        if (await isSupabaseReachable()) {
+        if (false) { // Supabase sync disabled
           const payload: any = {};
           if (data.descricao !== undefined) payload.descricao = data.descricao;
           if (data.temperatura !== undefined) payload.temperatura = data.temperatura;
@@ -962,10 +919,10 @@ class InMemoryStorage implements IStorage {
     const before = this.modelos.length;
     this.modelos = this.modelos.filter(m => m.id !== id);
     const success = this.modelos.length < before;
-    // Persistir exclusão no Supabase (aguardar antes de retornar - síncrono)
+    // Persistir exclusão no Supabase (DISABLED - using Drizzle only)
     if (success) {
       try {
-        if (await isSupabaseReachable()) {
+        if (false) { // Supabase sync disabled
           const { error } = await supabase.from('modelos_produtos').delete().eq('id', id);
           if (error) console.warn('Falha ao deletar modelo no Supabase:', error.message);
         }
@@ -1007,8 +964,8 @@ class InMemoryStorage implements IStorage {
       // Se o Supabase estiver disponível, inserir primeiro lá para garantir
       // que o `id` usado localmente corresponda ao `id` remoto. Isso evita
       // inconsistências onde um alimento é criado com um id in-memory e a
-      // exclusão posterior não encontra a linha no Supabase.
-      if (await isSupabaseReachable()) {
+      // exclusão posterior não encontra a linha no Supabase. (DISABLED - using Drizzle only)
+      if (false) { // Supabase sync disabled
         try {
           const supaPayload = {
             nome: insertAlimento.nome,
@@ -1159,10 +1116,10 @@ class InMemoryStorage implements IStorage {
 
     this.alimentos[idx] = alimento;
     
-    // Persistir mudança no Supabase
+    // Persistir mudança no Supabase (DISABLED - using Drizzle only)
     (async () => {
       try {
-        if (await isSupabaseReachable()) {
+        if (false) { // Supabase sync disabled
           const payload: any = {
             codigo_produto: alimento.codigoProduto,
             nome: alimento.nome,
@@ -1197,10 +1154,10 @@ class InMemoryStorage implements IStorage {
     this.alimentos = this.alimentos.filter(a => a.id !== id);
     const success = this.alimentos.length < before;
 
-    // Persistir exclusão no Supabase (aguardar antes de retornar - síncrono!)
+    // Persistir exclusão no Supabase (DISABLED - using Drizzle only)
     if (success) {
       try {
-        if (await isSupabaseReachable()) {
+        if (false) { // Supabase sync disabled
           // Primeiro tentar deletar pela id (o caso ideal)
           try {
             const { data: deletedById, error } = await supabase.from('alimentos').delete().eq('id', id).select();
@@ -1252,10 +1209,10 @@ class InMemoryStorage implements IStorage {
     alimento.quantidade = Math.max(0, (alimento.quantidade || 0) - quantidade);
     if (alimento.quantidade === 0) alimento.dataSaida = new Date().toISOString().split('T')[0];
     
-    // Persistir saída no Supabase
+    // Persistir saída no Supabase (DISABLED - using Drizzle only)
     (async () => {
       try {
-        if (await isSupabaseReachable()) {
+        if (false) { // Supabase sync disabled
           const payload: any = {
             quantidade: alimento.quantidade,
           };
@@ -1281,10 +1238,10 @@ class InMemoryStorage implements IStorage {
     const entry: any = { id: this.logs.length + 1, ...log, timestamp: new Date().toISOString() };
     this.logs.push(entry);
 
-    // Tentar sincronizar com Supabase se disponível. Não bloquear a resposta
+    // Tentar sincronizar com Supabase se disponível (DISABLED - using Drizzle only)
     (async () => {
       try {
-        if (await isSupabaseReachable()) {
+        if (false) { // Supabase sync disabled
           const supaPayload: any = {
             alimento_id: log.alimentoId || null,
             alimento_codigo: log.alimentoCodigo || null,
