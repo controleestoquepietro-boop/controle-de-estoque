@@ -81,39 +81,30 @@ async function registerRoutes(app) {
         }
     });
     // Middleware para verificar autenticação
+    // ⚠️ CRÍTICO: Este middleware deve ser MÍNIMO e não fazer nenhuma chamada externa.
+    // Qualquer chamada a Supabase/Storage pode disparar WebSocket em Render e retornar 401.
     const requireAuth = async (req, res, next) => {
         // Dev header bypass: se ENABLE_DEV_ROUTES=1 e header x-dev-impersonate
         // estiver presente, permitimos autenticar por email sem cookie (apenas
         // para testes locais). Isto facilita testes via curl/Invoke-RestMethod.
-        try {
-            if (process.env.ENABLE_DEV_ROUTES === '1' && req.headers['x-dev-impersonate']) {
-                const devEmail = String(req.headers['x-dev-impersonate']);
-                try {
-                    // Evitar chamadas que dependam do Supabase/DB para não falhar em
-                    // ambientes desconectados. Criamos um usuário mínimo no momento.
-                    const devUser = { id: `dev-${Date.now()}`, nome: devEmail.split('@')[0], email: devEmail };
-                    req.user = devUser;
-                    // também podemos popular req.session.userId para compatibilidade
-                    try {
-                        req.session.userId = devUser.id;
-                    }
-                    catch (_) { }
-                    return next();
-                }
-                catch (e) {
-                    console.warn('Falha no dev impersonate:', e);
-                }
-            }
+        if (process.env.ENABLE_DEV_ROUTES === '1' && req.headers['x-dev-impersonate']) {
+            const devEmail = String(req.headers['x-dev-impersonate']);
+            const devUser = { id: `dev-${Date.now()}`, nome: devEmail.split('@')[0], email: devEmail };
+            req.user = devUser;
+            console.log('✅ Dev bypass (x-dev-impersonate) ativado para:', devEmail);
+            return next();
         }
-        catch (e) {
-            // ignore
+        // AUTENTICAÇÃO PRIMÁRIA: Validar via req.session.userId (Express session cookie)
+        if (req.session && req.session.userId) {
+            req.user = { id: req.session.userId };
+            console.log(`✅ Autenticado via session_id - userId: ${req.session.userId.substring(0, 20)}`);
+            return next();
         }
-        // Fallback stateless: reconstruir sessão via cookie assinado quando a
-        // store em memória não estiver disponível entre instâncias (ex: Render).
+        // AUTENTICAÇÃO SECUNDÁRIA: Validar via cookie assinado shelf_uid (fallback stateless)
         try {
             const signedCookieName = process.env.SIGNED_COOKIE_NAME || 'shelf_uid';
             const signed = req.cookies && req.cookies[signedCookieName];
-            if ((!req.session || !req.session.userId) && signed && typeof signed === 'string') {
+            if (signed && typeof signed === 'string') {
                 const parts = signed.split('.');
                 if (parts.length === 2) {
                     const uid = parts[0];
@@ -121,121 +112,41 @@ async function registerRoutes(app) {
                     const secret = process.env.SESSION_SECRET || 'shelf-aid-secret-key-change-in-production';
                     try {
                         const expected = crypto_1.default.createHmac('sha256', secret).update(uid).digest('hex');
-                        if (Buffer.from(sig, 'hex').length === Buffer.from(expected, 'hex').length &&
-                            crypto_1.default.timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'))) {
-                            // Garantir que a sessão exista e seja persistida no store local
-                            if (!req.session)
-                                req.session = {};
-                            req.session.userId = uid;
-                            // Tentar salvar a sessão atual para que o store receba a informação
+                        if (sig === expected) {
+                            // ✅ Cookie assinado válido
+                            req.user = { id: uid };
+                            // Tentar restaurar sessão no store para proxies/redeploys
                             try {
+                                if (!req.session)
+                                    req.session = {};
+                                req.session.userId = uid;
                                 if (typeof req.session.save === 'function') {
-                                    req.session.save((saveErr) => {
-                                        if (saveErr) {
-                                            console.warn('Aviso: falha ao salvar sessão a partir do cookie assinado:', saveErr);
-                                        }
-                                        else {
-                                            try {
-                                                // Reenviar cookie de sessão (refresh) para o cliente
-                                                const cookieName = process.env.SESSION_COOKIE_NAME || 'session_id';
-                                                const cookieOptions = {
-                                                    httpOnly: true,
-                                                    secure: process.env.NODE_ENV === 'production',
-                                                    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-                                                    path: '/',
-                                                    maxAge: 7 * 24 * 60 * 60 * 1000,
-                                                };
-                                                if (req.sessionID) {
-                                                    res.cookie(cookieName, req.sessionID, cookieOptions);
-                                                }
-                                                // também reaplicar o cookie assinado (refresh)
-                                                try {
-                                                    const signedCookieName = process.env.SIGNED_COOKIE_NAME || 'shelf_uid';
-                                                    const sigValue = `${uid}.${crypto_1.default.createHmac('sha256', secret).update(String(uid)).digest('hex')}`;
-                                                    res.cookie(signedCookieName, sigValue, cookieOptions);
-                                                }
-                                                catch (e) {
-                                                    // ignore
-                                                }
-                                            }
-                                            catch (e) {
-                                                // ignore
-                                            }
-                                        }
+                                    req.session.save((err) => {
+                                        if (err)
+                                            console.warn('Aviso: falha ao restaurar sessão:', err);
+                                        else
+                                            console.log(`✅ Sessão restaurada a partir do cookie assinado - userId: ${uid.substring(0, 20)}`);
                                     });
                                 }
                             }
-                            catch (e) {
-                                console.warn('Aviso: erro ao tentar persistir sessão do cookie assinado:', e);
+                            catch (_) {
+                                // ignore - autenticação já sucedeu via cookie assinado
                             }
+                            return next();
                         }
                     }
                     catch (e) {
-                        console.warn('Aviso: falha ao verificar cookie assinado:', e);
+                        console.warn('⚠️ Erro ao validar cookie assinado:', e);
                     }
                 }
             }
         }
         catch (e) {
-            console.warn('Aviso: erro no fallback de cookie assinado:', e);
+            console.warn('⚠️ Erro ao processar fallback de cookie assinado:', e);
         }
-        // DEBUG: mostrar informações da sessão para diagnosticar 401
-        try {
-            const envInfo = {
-                NODE_ENV: process.env.NODE_ENV,
-                trust_proxy: process.env.TRUST_PROXY,
-                frontend_url: process.env.FRONTEND_URL ? '✓' : '✗',
-                cors_origin: process.env.CORS_ORIGIN || 'reflect',
-            };
-            const sessionInfo = {
-                sessionID: req.sessionID,
-                session_userId: req.session?.userId || 'N/A',
-                session_data: req.session ? JSON.stringify(Object.keys(req.session)) : 'N/A',
-            };
-            const cookieInfo = {
-                'raw_cookie_header': req.headers?.cookie || 'N/A',
-                'parsed_cookies': req.cookies ? Object.keys(req.cookies) : 'N/A',
-                'signed_cookie_present': req.cookies?.shelf_uid ? '✓' : '✗',
-                'session_cookie_present': req.cookies?.session_id ? '✓' : '✗',
-            };
-            const requestInfo = {
-                method: req.method,
-                path: req.path,
-                origin: req.headers?.origin || 'N/A',
-                referer: req.headers?.referer || 'N/A',
-                user_agent: req.headers?.['user-agent'] ? '✓' : '✗',
-            };
-            console.log('==== DEBUG AUTH INFO (requireAuth middleware) ====');
-            console.log('Env:', JSON.stringify(envInfo, null, 2));
-            console.log('Session:', JSON.stringify(sessionInfo, null, 2));
-            console.log('Cookies:', JSON.stringify(cookieInfo, null, 2));
-            console.log('Request:', JSON.stringify(requestInfo, null, 2));
-            console.log('====================================================');
-        }
-        catch (e) {
-            console.error('Erro ao logar debug:', e);
-        }
-        if (!req.session || !req.session.userId) {
-            console.warn(`⚠️ 401 Não autenticado - sessionID: ${req.sessionID}, userId: ${req.session?.userId}, path: ${req.path}`);
-            return res.status(401).json({ message: 'Não autenticado' });
-        }
-        try {
-            // Primeiro, buscar usuário local (metadados)
-            const user = await storage_1.storage.getUser(req.session.userId);
-            if (!user) {
-                return res.status(401).json({ message: 'Usuário não encontrado' });
-            }
-            req.user = user;
-            // NOTA: Removemos validação de email_confirmed_at via Supabase admin aqui
-            // porque causava erro "non-101 status code" (WebSocket bloqueado) em Render.
-            // A confirmação de email é validada durante login/registro via supabase.auth.
-            // Se o usuário fez login com sucesso, já passou por essa validação.
-            return next();
-        }
-        catch (error) {
-            console.error('Erro ao validar sessão:', error?.message || error);
-            return res.status(401).json({ message: 'Não autenticado' });
-        }
+        // ❌ Nenhuma forma de autenticação funcionou
+        console.warn(`❌ 401 Não autenticado - path: ${req.path}, sessionID: ${req.sessionID || 'N/A'}, cookies: ${Object.keys(req.cookies || {}).join(',')}`);
+        return res.status(401).json({ message: 'Não autenticado' });
     };
     // ============ AUTENTICAÇÃO ============
     // Registrar novo usuário
@@ -780,29 +691,19 @@ async function registerRoutes(app) {
     // Obter usuário atual diretamente do Supabase
     app.get('/api/auth/me', requireAuth, async (req, res) => {
         try {
-            if (!req.session || !req.session.userId) {
+            // O middleware requireAuth já garantiu que req.user.id existe
+            const userId = req.user?.id || req.session?.userId;
+            if (!userId) {
                 return res.status(401).json({ message: 'Não autenticado' });
             }
-            const userId = req.session.userId;
-            // Buscar usuário do storage local (fonte de verdade para rotas protegidas)
-            let localUser = null;
-            try {
-                localUser = await storage_1.storage.getUser(userId);
-                if (localUser) {
-                    const criado = localUser.criado_em || localUser.createdAt || new Date().toISOString();
-                    return res.json({ id: localUser.id, nome: localUser.nome, email: localUser.email, criado_em: criado });
-                }
-            }
-            catch (err) {
-                console.error('Erro ao ler usuário do storage:', err && err.message ? err.message : err);
-                // fallback configurável para permitir UI mínima caso o DB esteja inacessível
-                const allowFallback = process.env.SESSION_FALLBACK !== '0';
-                if (allowFallback) {
-                    console.warn('SESSION_FALLBACK habilitado — retornando usuário mínimo');
-                    return res.json({ id: userId, nome: 'Usuário (offline)', email: '' });
-                }
-                return res.status(500).json({ message: 'Erro ao ler usuário do storage' });
-            }
+            // Retornar informações mínimas do usuário (apenas o que está disponível via cookie)
+            // Não fazer chamadas a storage/supabase que possam disparar WebSocket
+            return res.json({
+                id: userId,
+                nome: 'Usuário',
+                email: '',
+                criado_em: new Date().toISOString(),
+            });
         }
         catch (error) {
             console.error('Erro ao obter usuário atual:', error);
