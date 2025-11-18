@@ -19,6 +19,13 @@ declare module 'express-session' {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  function isDbNetworkError(err: any) {
+    if (!err) return false;
+    const code = err.code || err.errno || '';
+    const msg = String(err.message || '');
+    return code === 'ENETUNREACH' || code === -101 || msg.includes('ENETUNREACH');
+  }
+
   // Session middleware
   app.use(
     session({
@@ -801,6 +808,9 @@ app.get('/api/alimentos', requireAuth, async (req, res) => {
     res.json(alimentos);
   } catch (error: any) {
     console.error('Erro ao listar alimentos:', error);
+    if (isDbNetworkError(error)) {
+      return res.status(502).json({ message: 'Banco inacessível (ENETUNREACH). Verifique se o provedor expõe IPv4 ou configure SUPABASE_DB_HOST_IPV4 no ambiente.' });
+    }
     res.status(500).json({ message: 'Erro ao listar alimentos' });
   }
 });
@@ -852,6 +862,9 @@ app.post('/api/alimentos', requireAuth, async (req: any, res) => {
       errno: error?.errno,
       stack: error?.stack?.substring(0, 150),
     });
+    if (isDbNetworkError(error)) {
+      return res.status(502).json({ message: 'Banco inacessível (ENETUNREACH). Verifique se o provedor expõe IPv4 ou configure SUPABASE_DB_HOST_IPV4 no ambiente.' });
+    }
     res.status(400).json({ message: error.message || 'Erro ao criar alimento' });
   }
 });
@@ -1127,6 +1140,9 @@ app.post('/api/alimentos', requireAuth, async (req: any, res) => {
       res.json(logs);
     } catch (error: any) {
       console.error('Erro ao listar audit logs:', error);
+      if (isDbNetworkError(error)) {
+        return res.status(502).json({ message: 'Banco inacessível (ENETUNREACH). Verifique se o provedor expõe IPv4 ou configure SUPABASE_DB_HOST_IPV4 no ambiente.' });
+      }
       res.status(500).json({ message: 'Erro ao listar histórico' });
     }
   });
