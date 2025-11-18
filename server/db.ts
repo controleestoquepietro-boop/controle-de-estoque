@@ -4,32 +4,35 @@ import { Pool, neonConfig } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-serverless';
 import * as schema from "../shared/schema";
 
-// ⚠️ IMPORTANTE: WebSocket causava erro 401 com Supabase
-// Desabilitar WebSocket força o uso de HTTP (mais estável e seguro)
-// neonConfig.webSocketConstructor = ws;
+// ⚠️ CRÍTICO: Desabilitar WebSocket
+// No Render, WebSocket é bloqueado por firewall de saída.
+// Usar apenas HTTP/HTTPS para conexões com Neon.
+neonConfig.webSocketConstructor = undefined;
 
-// Aceita certificados auto-assinados/expirados em dev/empacotado
-// Em alguns ambientes (desenvolvimento/empacotado) precisamos aceitar
-// certificados auto-assinados; a tipagem exposta pela biblioteca pode
-// esperar um booleano — fazemos um cast para 'any' para manter o
-// comportamento desejado sem quebrar a tipagem.
+// Aceita certificados auto-assinados/expirados em dev
+// Em ambientes de desenvolvimento/empacotado podemos aceitar certificados auto-assinados.
 (neonConfig as any).pipelineTLS = { rejectUnauthorized: false } as any;
 
 const connectionString = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
 
 if (!connectionString) {
-  throw new Error(
-    "SUPABASE_DB_URL or DATABASE_URL must be set. Did you forget to configure Supabase?",
-  );
+  console.error('❌ SUPABASE_DB_URL or DATABASE_URL not configured');
+  console.error('DATABASE_URL:', process.env.DATABASE_URL ? '✓' : '✗');
+  console.error('SUPABASE_DB_URL:', process.env.SUPABASE_DB_URL ? '✓' : '✗');
+  throw new Error('SUPABASE_DB_URL or DATABASE_URL must be set');
 }
 
-// Opcionalmente usa um pool local se a conexão remota falhar
-let pool;
+console.log('📍 Conectando ao banco de dados via Neon...');
+console.log('📍 Connection string configurado:', connectionString ? '✓' : '✗');
+
+// Criar pool com tratamento de erro
+let pool: Pool;
 try {
   pool = new Pool({ connectionString });
+  console.log('✅ Pool de conexão Neon criado com sucesso');
 } catch (e) {
-  console.error('[db] Falha na conexão remota:', e);
-  pool = new Pool({ connectionString: 'sqlite::memory:' }); // fallback local
+  console.error('❌ Falha ao criar pool Neon:', e);
+  throw e;
 }
 
 export const db = drizzle({ client: pool, schema });
