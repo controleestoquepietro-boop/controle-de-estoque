@@ -693,10 +693,17 @@ app.get('/api/auth/me', requireAuth, async (req: any, res) => {
   // Listar todos os modelos de produtos
   app.get('/api/modelos-produtos', requireAuth, async (req, res) => {
     try {
+      console.log('📍 GET /api/modelos-produtos - Usuário:', (req as any).userId);
       const modelos = await storage.getAllModelosProdutos();
+      console.log(`✅ Retornando ${modelos.length} modelos`);
       res.json(modelos);
     } catch (error: any) {
-      console.error('Erro ao listar modelos:', error);
+      console.error('❌ Erro ao listar modelos:', {
+        message: error?.message || error?.toString(),
+        stack: error?.stack?.substring(0, 200),
+        code: error?.code,
+        name: error?.name,
+      });
       res.status(500).json({ message: 'Erro ao listar modelos de produtos' });
     }
   });
@@ -801,6 +808,7 @@ app.get('/api/alimentos', requireAuth, async (req, res) => {
 // Criar alimento
 app.post('/api/alimentos', requireAuth, async (req: any, res) => {
   try {
+    console.log('📍 POST /api/alimentos - Usuário:', req.user.id, 'Dados:', Object.keys(req.body));
     const data = insertAlimentoSchema.parse({
       ...req.body,
       cadastradoPor: req.user.id,
@@ -816,6 +824,7 @@ app.post('/api/alimentos', requireAuth, async (req: any, res) => {
     };
 
     const alimento = await storage.createAlimento(alimentoData, req.user.id);
+    console.log('✅ Alimento criado:', alimento.id, alimento.nome);
 
     // Sincronização com Supabase já é feita dentro de `storage.createAlimento`.
     // Evitamos duplicar inserts aqui para não causar erros de FK ou duplicidade.
@@ -837,7 +846,12 @@ app.post('/api/alimentos', requireAuth, async (req: any, res) => {
 
     res.json(alimento);
   } catch (error: any) {
-    console.error('Erro ao criar alimento:', error);
+    console.error('❌ Erro ao criar alimento:', {
+      message: error?.message,
+      code: error?.code,
+      errno: error?.errno,
+      stack: error?.stack?.substring(0, 150),
+    });
     res.status(400).json({ message: error.message || 'Erro ao criar alimento' });
   }
 });

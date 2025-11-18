@@ -4,7 +4,11 @@ import { db } from "./db";
 import fs from 'fs';
 import path from 'path';
 import { eq, desc } from "drizzle-orm";
-import { supabase, isSupabaseReachable, supabaseService } from './supabaseClient';
+// import { supabase, isSupabaseReachable, supabaseService } from './supabaseClient'; // DISABLED: Using Drizzle only
+// Define stubs to avoid compilation errors
+const supabase: any = undefined;
+const isSupabaseReachable: any = undefined;
+const supabaseService: any = undefined;
 
 export interface IStorage {
   // Users
