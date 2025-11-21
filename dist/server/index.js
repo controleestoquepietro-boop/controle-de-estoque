@@ -80,6 +80,14 @@ app.use((req, res, next) => {
     next();
 });
 (async () => {
+    // TLS handling: prefer a secure CA via SUPABASE_DB_CA env var.
+    // DO NOT set NODE_TLS_REJECT_UNAUTHORIZED globally in production.
+    if (process.env.SUPABASE_DB_CA) {
+        console.log('🔐 SUPABASE_DB_CA provided - using custom CA for DB TLS verification.');
+    }
+    else {
+        console.log('⚠️ SUPABASE_DB_CA not provided - pool will use rejectUnauthorized=false (temporary).');
+    }
     console.log('📍 Iniciando aplicação...');
     console.log('📍 Chamando registerRoutes...');
     const server = await (0, routes_1.registerRoutes)(app);

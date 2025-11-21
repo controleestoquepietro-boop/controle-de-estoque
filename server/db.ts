@@ -59,9 +59,26 @@ const poolOptions: any = {
   max: 1,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
-  ssl: { rejectUnauthorized: false },
   connectionString,
 };
+
+// If the operator provides a Base64-encoded CA for the DB (SUPABASE_DB_CA), use it
+// for proper TLS verification. Otherwise fall back to rejectUnauthorized=false
+// (less secure) so systems with non-standard cert chains can still connect.
+if (process.env.SUPABASE_DB_CA) {
+  try {
+    const ca = Buffer.from(process.env.SUPABASE_DB_CA, 'base64').toString('utf8');
+    // Node pg expects an object with `ca` and `rejectUnauthorized`
+    poolOptions.ssl = { ca, rejectUnauthorized: true };
+    console.log('🔐 DB TLS: using SUPABASE_DB_CA (secure verification enabled)');
+  } catch (e) {
+    console.warn('⚠️ Falha ao parsear SUPABASE_DB_CA, ca será ignorado:', e);
+    poolOptions.ssl = { rejectUnauthorized: false };
+  }
+} else {
+  poolOptions.ssl = { rejectUnauthorized: false };
+  console.log('⚠️ DB TLS: SUPABASE_DB_CA not provided — using rejectUnauthorized=false (temporary)');
+}
 
 if (!process.env.SUPABASE_DB_HOST_IPV4) {
   console.log('ℹ️ To avoid IPv6 ENETUNREACH on platforms that block IPv6, set SUPABASE_DB_HOST_IPV4 to an IPv4 address for the DB host');

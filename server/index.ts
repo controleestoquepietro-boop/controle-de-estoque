@@ -106,10 +106,13 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Temporariamente desabilitar checagem TLS para evitar "self-signed certificate"
-  // observado em ambientes onde o certificado do banco não é reconhecido.
-  // IMPORTANTE: remover essa linha e usar uma solução mais segura em produção.
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+  // TLS handling: prefer a secure CA via SUPABASE_DB_CA env var.
+  // DO NOT set NODE_TLS_REJECT_UNAUTHORIZED globally in production.
+  if (process.env.SUPABASE_DB_CA) {
+    console.log('🔐 SUPABASE_DB_CA provided - using custom CA for DB TLS verification.');
+  } else {
+    console.log('⚠️ SUPABASE_DB_CA not provided - pool will use rejectUnauthorized=false (temporary).');
+  }
 
   console.log('📍 Iniciando aplicação...');
   
