@@ -48,6 +48,13 @@ const schema_1 = require("../shared/schema");
 const supabaseClient_1 = require("./supabaseClient");
 const MemoryStore = (0, memorystore_1.default)(express_session_1.default);
 async function registerRoutes(app) {
+    function isDbNetworkError(err) {
+        if (!err)
+            return false;
+        const code = err.code || err.errno || '';
+        const msg = String(err.message || '');
+        return code === 'ENETUNREACH' || code === -101 || msg.includes('ENETUNREACH');
+    }
     // Session middleware
     app.use((0, express_session_1.default)({
         // Nome explícito do cookie para evitar discrepâncias entre
@@ -227,10 +234,13 @@ async function registerRoutes(app) {
                 // Usamos upsert por email para evitar erro de duplicate key caso o
                 // email já exista na tabela (p.ex. importado manualmente no painel).
                 try {
+                    // Gerar valores obrigatórios ausentes na tabela `users` (ex: password e color)
+                    const generatedColor = `hsl(${Math.floor(Math.random() * 360)} 70% 40%)`;
                     console.log('🔄 Tentando upsert no Supabase (users) com:', {
                         id: data.user.id,
                         nome,
-                        email
+                        email,
+                        color: generatedColor,
                     });
                     try {
                         const svc = supabaseClient_1.supabaseService || supabaseClient_1.supabase;
@@ -241,6 +251,9 @@ async function registerRoutes(app) {
                                 id: data.user.id,
                                 nome,
                                 email,
+                                // placeholder para satisfazer NOT NULL na tabela (não é a senha real)
+                                password: '',
+                                color: generatedColor,
                                 criado_em: new Date().toISOString(),
                             },
                         ], { onConflict: 'email', ignoreDuplicates: false });
@@ -820,6 +833,9 @@ async function registerRoutes(app) {
         }
         catch (error) {
             console.error('Erro ao listar alimentos:', error);
+            if (isDbNetworkError(error)) {
+                return res.status(502).json({ message: 'Banco inacessível (ENETUNREACH). Verifique se o provedor expõe IPv4 ou configure SUPABASE_DB_HOST_IPV4 no ambiente.' });
+            }
             res.status(500).json({ message: 'Erro ao listar alimentos' });
         }
     });
@@ -866,6 +882,9 @@ async function registerRoutes(app) {
                 errno: error?.errno,
                 stack: error?.stack?.substring(0, 150),
             });
+            if (isDbNetworkError(error)) {
+                return res.status(502).json({ message: 'Banco inacessível (ENETUNREACH). Verifique se o provedor expõe IPv4 ou configure SUPABASE_DB_HOST_IPV4 no ambiente.' });
+            }
             res.status(400).json({ message: error.message || 'Erro ao criar alimento' });
         }
     });
@@ -1116,6 +1135,9 @@ async function registerRoutes(app) {
         }
         catch (error) {
             console.error('Erro ao listar audit logs:', error);
+            if (isDbNetworkError(error)) {
+                return res.status(502).json({ message: 'Banco inacessível (ENETUNREACH). Verifique se o provedor expõe IPv4 ou configure SUPABASE_DB_HOST_IPV4 no ambiente.' });
+            }
             res.status(500).json({ message: 'Erro ao listar histórico' });
         }
     });

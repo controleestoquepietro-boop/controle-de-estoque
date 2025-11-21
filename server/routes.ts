@@ -212,10 +212,13 @@ app.post('/api/auth/register', async (req, res) => {
       // Usamos upsert por email para evitar erro de duplicate key caso o
       // email já exista na tabela (p.ex. importado manualmente no painel).
       try {
+        // Gerar valores obrigatórios ausentes na tabela `users` (ex: password e color)
+        const generatedColor = `hsl(${Math.floor(Math.random() * 360)} 70% 40%)`;
         console.log('🔄 Tentando upsert no Supabase (users) com:', {
           id: data.user.id,
           nome,
-          email
+          email,
+          color: generatedColor,
         });
 
         try {
@@ -227,6 +230,9 @@ app.post('/api/auth/register', async (req, res) => {
                 id: data.user.id,
                 nome,
                 email,
+                // placeholder para satisfazer NOT NULL na tabela (não é a senha real)
+                password: '',
+                color: generatedColor,
                 criado_em: new Date().toISOString(),
               },
             ], { onConflict: 'email', ignoreDuplicates: false });
