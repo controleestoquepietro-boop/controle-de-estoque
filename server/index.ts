@@ -106,6 +106,11 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Temporariamente desabilitar checagem TLS para evitar "self-signed certificate"
+  // observado em ambientes onde o certificado do banco não é reconhecido.
+  // IMPORTANTE: remover essa linha e usar uma solução mais segura em produção.
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
   console.log('📍 Iniciando aplicação...');
   
   console.log('📍 Chamando registerRoutes...');
