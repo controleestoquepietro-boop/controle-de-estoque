@@ -230,46 +230,81 @@ async function registerRoutes(app) {
                 catch (e) {
                     console.error('⚠️ Erro ao criar usuário no storage local:', e);
                 }
-                // Tentar manter também a tabela 'users' no Supabase (opcional).
-                // Usamos upsert por email para evitar erro de duplicate key caso o
-                // email já exista na tabela (p.ex. importado manualmente no painel).
-                try {
-                    // Gerar valores obrigatórios ausentes na tabela `users` (ex: password e color)
-                    const generatedColor = `hsl(${Math.floor(Math.random() * 360)} 70% 40%)`;
-                    console.log('🔄 Tentando upsert no Supabase (users) com:', {
-                        id: data.user.id,
-                        nome,
-                        email,
-                        color: generatedColor,
-                    });
+                // 3️⃣ Inserir o usuário na tabela "users" (metadados adicionais)
+                if (data.user) {
+                    // Persistir metadados do usuário também no storage local/DB.
+                    // Em desenvolvimento `storage` é InMemoryStorage, então precisamos
+                    // garantir que o usuário exista lá também (mesmo id do Supabase)
                     try {
-                        const svc = supabaseClient_1.supabaseService || supabaseClient_1.supabase;
-                        const { error: insertError } = await svc
-                            .from('users')
-                            .upsert([
-                            {
+                        console.log('🔄 Criando usuário no storage local com id:', data.user.id);
+                        await storage_1.storage.createUser({ id: data.user.id, nome, email });
+                        console.log('✅ Usuário criado no storage local');
+                    }
+                    catch (e) {
+                        console.error('⚠️ Erro ao criar usuário no storage local:', e);
+                    }
+                    // Criar também na tabela 'users' do Supabase.
+                    // CRÍTICO: Usar supabaseService (com service_role) para bypass de RLS.
+                    // Se service_role não estiver disponível, o signup falha no painel do Supabase.
+                    try {
+                        if (!supabaseClient_1.supabaseService) {
+                            console.error('❌ ERRO CRÍTICO: supabaseService não inicializado. Usuário não será inserido na tabela users do Supabase.');
+                            console.error('   Verifique se SUPABASE_SERVICE_ROLE_KEY foi configurado corretamente no ambiente.');
+                        }
+                        else {
+                            // Gerar valores obrigatórios ausentes na tabela `users`
+                            const generatedColor = `hsl(${Math.floor(Math.random() * 360)} 70% 40%)`;
+                            console.log('🔄 Tentando inserir na tabela users do Supabase com:', {
                                 id: data.user.id,
                                 nome,
                                 email,
-                                // placeholder para satisfazer NOT NULL na tabela (não é a senha real)
-                                password: '',
                                 color: generatedColor,
-                                criado_em: new Date().toISOString(),
-                            },
-                        ], { onConflict: 'email', ignoreDuplicates: false });
-                        if (insertError) {
-                            console.error('⚠️ Erro ao upsert usuário no Supabase (users) via service client:', insertError);
-                        }
-                        else {
-                            console.log('✅ Usuário criado na tabela users do Supabase (via service client)');
+                            });
+                            // Usar INSERT direto (não upsert) para forçar erro se já existir
+                            // Isso ajuda a detectar problemas de sincronização
+                            const { error: insertError, data: insertedData } = await supabaseClient_1.supabaseService
+                                .from('users')
+                                .insert([
+                                {
+                                    id: data.user.id,
+                                    nome,
+                                    email,
+                                    // Placeholder para satisfazer NOT NULL na tabela (não é a senha real)
+                                    password: 'auth-via-supabase',
+                                    color: generatedColor,
+                                    created_at: new Date().toISOString(),
+                                },
+                            ]);
+                            if (insertError) {
+                                // Se houver erro de duplicate key, tentar atualizar em vez de inserir
+                                if (insertError.message && insertError.message.toLowerCase().includes('duplicate')) {
+                                    console.warn('⚠️ Usuário já existe na tabela users - tentando atualizar...');
+                                    const { error: updateError } = await supabaseClient_1.supabaseService
+                                        .from('users')
+                                        .update({
+                                        nome,
+                                        email,
+                                    })
+                                        .eq('id', data.user.id);
+                                    if (updateError) {
+                                        console.error('⚠️ Erro ao atualizar usuário existente:', updateError);
+                                    }
+                                    else {
+                                        console.log('✅ Usuário atualizado na tabela users do Supabase (via service client)');
+                                    }
+                                }
+                                else {
+                                    console.error('❌ Erro ao inserir usuário no Supabase (users) via service client:', insertError);
+                                }
+                            }
+                            else {
+                                console.log('✅ Usuário criado na tabela users do Supabase (via service client)');
+                            }
                         }
                     }
                     catch (e) {
-                        console.error('⚠️ Falha ao tentar upsert usuários no Supabase via service client:', e);
+                        console.error('❌ Falha ao tentar inserir usuário no Supabase (users):', e);
                     }
-                }
-                catch (e) {
-                    console.error('⚠️ Erro ao upsert usuário no Supabase (users):', e);
                 }
             }
             // Auto-login: popular a sessão do express com o novo user id para evitar

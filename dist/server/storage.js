@@ -10,11 +10,8 @@ const db_1 = require("./db");
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const drizzle_orm_1 = require("drizzle-orm");
-// import { supabase, isSupabaseReachable, supabaseService } from './supabaseClient'; // DISABLED: Using Drizzle only
-// Define stubs to avoid compilation errors
-const supabase = undefined;
-const isSupabaseReachable = undefined;
-const supabaseService = undefined;
+// Importar clientes Supabase corretamente
+const supabaseClient_1 = require("./supabaseClient");
 class DatabaseStorage {
     constructor() {
         this.processingPending = false;
@@ -335,7 +332,7 @@ class DatabaseStorage {
     async ensureUserInSupabase(userId) {
         try {
             // 1. Tentar encontrar por ID no Supabase (caso comum)
-            const { data: idMatch, error: idError } = await supabase
+            const { data: idMatch, error: idError } = await supabaseClient_1.supabase
                 .from('users')
                 .select('id, email')
                 .eq('id', userId)
@@ -354,7 +351,7 @@ class DatabaseStorage {
                 return undefined;
             }
             // 3. Tentar encontrar por email no Supabase
-            const { data: emailMatch, error: emailError } = await supabase
+            const { data: emailMatch, error: emailError } = await supabaseClient_1.supabase
                 .from('users')
                 .select('id, email')
                 .eq('email', local.email)
@@ -377,7 +374,7 @@ class DatabaseStorage {
             };
             // Usar service-role client para upsert administrativo (evita problemas RLS)
             const { supabaseService } = require('./supabaseClient');
-            const svc = supabaseService || supabase;
+            const svc = supabaseService || supabaseClient_1.supabase;
             const { data: created, error: insertErr } = await svc
                 .from('users')
                 .upsert([payload], {
@@ -395,7 +392,7 @@ class DatabaseStorage {
                 return created.id;
             }
             // 5. Se o upsert não retornou dados, buscar novamente por email
-            const { data: finalCheck } = await supabase
+            const { data: finalCheck } = await supabaseClient_1.supabase
                 .from('users')
                 .select('id')
                 .eq('email', local.email)
@@ -471,7 +468,7 @@ class DatabaseStorage {
                     timestamp: log.timestamp || new Date().toISOString(),
                 };
                 try {
-                    const svc = supabaseService || supabase;
+                    const svc = supabaseClient_1.supabaseService || supabaseClient_1.supabase;
                     const { data: inserted, error } = await svc.from('audit_log').insert([payload]).select().maybeSingle();
                     if (error) {
                         console.warn('DatabaseStorage: falha ao sincronizar audit_log com Supabase:', error.message || error);
@@ -531,7 +528,7 @@ class InMemoryStorage {
             try {
                 console.log('InMemoryStorage: iniciando bootstrap a partir do Supabase...');
                 // Carregar usuários
-                const { data: supaUsers, error: usersErr } = await supabase.from('users').select('*');
+                const { data: supaUsers, error: usersErr } = await supabaseClient_1.supabase.from('users').select('*');
                 if (usersErr) {
                     console.warn('InMemoryStorage: erro ao carregar users do Supabase:', usersErr.message || usersErr);
                 }
@@ -561,7 +558,7 @@ class InMemoryStorage {
                     console.warn('InMemoryStorage: falha ao criar usuário adm local:', e);
                 }
                 // Carregar alimentos
-                const { data: supaAlimentos, error: alimentosErr } = await supabase.from('alimentos').select('*');
+                const { data: supaAlimentos, error: alimentosErr } = await supabaseClient_1.supabase.from('alimentos').select('*');
                 if (alimentosErr) {
                     console.warn('InMemoryStorage: erro ao carregar alimentos do Supabase:', alimentosErr.message || alimentosErr);
                 }
@@ -592,7 +589,7 @@ class InMemoryStorage {
                     console.log(`InMemoryStorage: carregados ${this.alimentos.length} alimentos do Supabase (nextId=${this.nextId})`);
                 }
                 // Carregar audit logs opcionalmente e mapear campos para camelCase
-                const { data: supaLogs, error: logsErr } = await supabase.from('audit_log').select('*');
+                const { data: supaLogs, error: logsErr } = await supabaseClient_1.supabase.from('audit_log').select('*');
                 if (logsErr) {
                     // não crítico
                 }
@@ -613,7 +610,7 @@ class InMemoryStorage {
                 }
                 // Carregar modelos de produtos (para permitir auto-fill após reiniciar o servidor)
                 try {
-                    const { data: supaModelos, error: modelosErr } = await supabase.from('modelos_produtos').select('*');
+                    const { data: supaModelos, error: modelosErr } = await supabaseClient_1.supabase.from('modelos_produtos').select('*');
                     if (modelosErr) {
                         console.warn('InMemoryStorage: erro ao carregar modelos do Supabase:', modelosErr.message || modelosErr);
                     }
@@ -653,7 +650,7 @@ class InMemoryStorage {
     async ensureUserInSupabase(userId) {
         try {
             // 1. Tentar encontrar por ID no Supabase (caso comum)
-            const { data: idMatch, error: idError } = await supabase
+            const { data: idMatch, error: idError } = await supabaseClient_1.supabase
                 .from('users')
                 .select('id, email')
                 .eq('id', userId)
@@ -672,7 +669,7 @@ class InMemoryStorage {
                 return undefined;
             }
             // 3. Tentar encontrar por email no Supabase
-            const { data: emailMatch, error: emailError } = await supabase
+            const { data: emailMatch, error: emailError } = await supabaseClient_1.supabase
                 .from('users')
                 .select('id, email')
                 .eq('email', local.email)
@@ -697,7 +694,7 @@ class InMemoryStorage {
             let insertErr = null;
             try {
                 const { supabaseService } = require('./supabaseClient');
-                const svc = supabaseService || supabase;
+                const svc = supabaseService || supabaseClient_1.supabase;
                 const result = await svc
                     .from('users')
                     .upsert([payload], { onConflict: 'email', ignoreDuplicates: true })
@@ -718,7 +715,7 @@ class InMemoryStorage {
                 return created.id;
             }
             // 5. Se o upsert não retornou dados, buscar novamente por email
-            const { data: finalCheck } = await supabase
+            const { data: finalCheck } = await supabaseClient_1.supabase
                 .from('users')
                 .select('id')
                 .eq('email', local.email)
@@ -826,7 +823,7 @@ class InMemoryStorage {
                     if (data.empresa !== undefined)
                         payload.empresa = data.empresa;
                     if (Object.keys(payload).length > 0) {
-                        const { error } = await supabase.from('modelos_produtos').update(payload).eq('id', id);
+                        const { error } = await supabaseClient_1.supabase.from('modelos_produtos').update(payload).eq('id', id);
                         if (error)
                             console.warn('Falha ao atualizar modelo no Supabase:', error.message);
                     }
@@ -846,7 +843,7 @@ class InMemoryStorage {
         if (success) {
             try {
                 if (false) { // Supabase sync disabled
-                    const { error } = await supabase.from('modelos_produtos').delete().eq('id', id);
+                    const { error } = await supabaseClient_1.supabase.from('modelos_produtos').delete().eq('id', id);
                     if (error)
                         console.warn('Falha ao deletar modelo no Supabase:', error.message);
                 }
@@ -903,7 +900,7 @@ class InMemoryStorage {
                         peso_por_caixa: insertAlimento.pesoPorCaixa,
                         alertas_config: alertasConfig,
                     };
-                    const { data: supaAlimento, error: supaError } = await supabase
+                    const { data: supaAlimento, error: supaError } = await supabaseClient_1.supabase
                         .from('alimentos')
                         .insert(supaPayload)
                         .select()
@@ -986,7 +983,7 @@ class InMemoryStorage {
                         peso_por_caixa: insertAlimento.pesoPorCaixa,
                         alertas_config: alertasConfig,
                     };
-                    const { data: supaAlimento, error: supaError } = await supabase
+                    const { data: supaAlimento, error: supaError } = await supabaseClient_1.supabase
                         .from('alimentos')
                         .insert(supaPayload)
                         .select()
@@ -1042,7 +1039,7 @@ class InMemoryStorage {
                         categoria: alimento.categoria,
                         alertas_config: alimento.alertasConfig,
                     };
-                    const { error } = await supabase.from('alimentos').update(payload).eq('id', id);
+                    const { error } = await supabaseClient_1.supabase.from('alimentos').update(payload).eq('id', id);
                     if (error)
                         console.warn('Falha ao atualizar alimento no Supabase:', error.message);
                 }
@@ -1064,7 +1061,7 @@ class InMemoryStorage {
                 if (false) { // Supabase sync disabled
                     // Primeiro tentar deletar pela id (o caso ideal)
                     try {
-                        const { data: deletedById, error } = await supabase.from('alimentos').delete().eq('id', id).select();
+                        const { data: deletedById, error } = await supabaseClient_1.supabase.from('alimentos').delete().eq('id', id).select();
                         if (error) {
                             console.warn('Falha ao deletar alimento por id no Supabase:', error.message);
                         }
@@ -1074,10 +1071,10 @@ class InMemoryStorage {
                         const removedCount = Array.isArray(deletedById) ? deletedById.length : (deletedById ? 1 : 0);
                         if (removedCount === 0 && alimentoAntes && alimentoAntes.codigoProduto) {
                             try {
-                                const filtro = supabase.from('alimentos').delete();
+                                const filtro = supabaseClient_1.supabase.from('alimentos').delete();
                                 // Tentar usar lote como filtro adicional quando disponível
                                 if (alimentoAntes.lote) {
-                                    const { data: deletedByCodeAndLote, error: err2 } = await supabase.from('alimentos').delete().match({ codigo_produto: alimentoAntes.codigoProduto, lote: alimentoAntes.lote }).select();
+                                    const { data: deletedByCodeAndLote, error: err2 } = await supabaseClient_1.supabase.from('alimentos').delete().match({ codigo_produto: alimentoAntes.codigoProduto, lote: alimentoAntes.lote }).select();
                                     if (err2)
                                         console.warn('Falha ao deletar por código+lote no Supabase:', err2.message);
                                     if (Array.isArray(deletedByCodeAndLote) && deletedByCodeAndLote.length > 0) {
@@ -1085,13 +1082,13 @@ class InMemoryStorage {
                                     }
                                     else {
                                         // último recurso: deletar por código apenas
-                                        const { data: deletedByCode, error: err3 } = await supabase.from('alimentos').delete().eq('codigo_produto', alimentoAntes.codigoProduto).select();
+                                        const { data: deletedByCode, error: err3 } = await supabaseClient_1.supabase.from('alimentos').delete().eq('codigo_produto', alimentoAntes.codigoProduto).select();
                                         if (err3)
                                             console.warn('Falha ao deletar por código no Supabase:', err3.message);
                                     }
                                 }
                                 else {
-                                    const { data: deletedByCode, error: err3 } = await supabase.from('alimentos').delete().eq('codigo_produto', alimentoAntes.codigoProduto).select();
+                                    const { data: deletedByCode, error: err3 } = await supabaseClient_1.supabase.from('alimentos').delete().eq('codigo_produto', alimentoAntes.codigoProduto).select();
                                     if (err3)
                                         console.warn('Falha ao deletar por código no Supabase:', err3.message);
                                 }
@@ -1128,7 +1125,7 @@ class InMemoryStorage {
                     };
                     if (alimento.dataSaida)
                         payload.data_saida = alimento.dataSaida;
-                    const { error } = await supabase.from('alimentos').update(payload).eq('id', id);
+                    const { error } = await supabaseClient_1.supabase.from('alimentos').update(payload).eq('id', id);
                     if (error)
                         console.warn('Falha ao registrar saída no Supabase:', error.message);
                 }
@@ -1163,7 +1160,7 @@ class InMemoryStorage {
                     // Tentar usar o cliente service-role quando disponível para ignorar RLS
                     try {
                         const { supabaseService } = require('./supabaseClient');
-                        const svc = supabaseService || supabase;
+                        const svc = supabaseService || supabaseClient_1.supabase;
                         const { data: inserted, error } = await svc.from('audit_log').insert([supaPayload]).select().maybeSingle();
                         if (!error && inserted) {
                             entry.id = inserted.id || entry.id;
@@ -1175,7 +1172,7 @@ class InMemoryStorage {
                     }
                     catch (e) {
                         try {
-                            const { data: inserted, error } = await supabase.from('audit_log').insert([supaPayload]).select().maybeSingle();
+                            const { data: inserted, error } = await supabaseClient_1.supabase.from('audit_log').insert([supaPayload]).select().maybeSingle();
                             if (!error && inserted) {
                                 entry.id = inserted.id || entry.id;
                                 entry.timestamp = inserted.timestamp || entry.timestamp;

@@ -42,6 +42,12 @@ const schema = __importStar(require("../shared/schema"));
 // Use native pg pooling - supports both direct and pooled connections
 // This avoids WebSocket issues on Render which blocks outbound connections
 let connectionString = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+// Ensure SSL mode is set to 'require' (not verify) - avoids self-signed cert issues
+if (connectionString && !connectionString.includes('sslmode=')) {
+    connectionString = connectionString.includes('?')
+        ? connectionString + '&sslmode=require'
+        : connectionString + '?sslmode=require';
+}
 // Keep port 5432 (TCP direct connection is fine for pg library)
 // Pooling is handled by pg's native pool, not Supabase pooler
 console.log('📍 Using TCP connection (port 5432) - pooling handled by pg library...');

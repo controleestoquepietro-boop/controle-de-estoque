@@ -25,6 +25,14 @@ console.log("🔑 SUPABASE_URL:", SUPABASE_URL ? '✓ configurada' : '✗ ausent
 console.log("🔐 SUPABASE_KEY (anon):", SUPABASE_ANON_KEY ? '✓ configurada' : '✗ ausente');
 console.log("🧩 SUPABASE_SERVICE_ROLE_KEY:", SUPABASE_SERVICE_ROLE_KEY ? '✓ configurada' : '✗ ausente');
 
+// Validação de variáveis críticas para Fly.io
+if (process.env.NODE_ENV === 'production') {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
+    console.error('❌ ERRO CRÍTICO EM PRODUÇÃO: Variáveis Supabase incompletas!');
+    console.error('   Configure com: flyctl secrets set SUPABASE_URL=... SUPABASE_KEY=... SUPABASE_SERVICE_ROLE_KEY=...');
+  }
+}
+
 /**
  * Helper: cria client com validação, ou retorna undefined se variáveis ausentes.
  * Supabase v2 lança erro se URL for vazia, então precisamos validar antes.
