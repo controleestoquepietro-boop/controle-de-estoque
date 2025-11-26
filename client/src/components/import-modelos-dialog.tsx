@@ -36,9 +36,11 @@ export function ImportModelosDialog({ open, onClose }: ImportModelosDialogProps)
           }));
           // `apiRequest` já retorna o JSON parseado para rotas internas (/api/...)
           // portanto não devemos chamar `.json()` sobre o resultado.
-          const data = await apiRequest('POST', '/api/modelos-produtos/import-excel', { 
+          // [FIX-IMPORT-CACHE-BUST-v2] 2025-11-25 23:00
+          const data = await apiRequest('POST', '/api/modelos-produtos/import', { 
             modelos: modelosComCamposSistema 
           });
+          console.log('✅ Import API response:', data);
       return data;
     },
     onSuccess: (data: any) => {

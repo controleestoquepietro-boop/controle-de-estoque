@@ -59,7 +59,7 @@ class DatabaseStorage {
     async updateUser(id, data) {
         const [user] = await db_1.db
             .update(schema_1.users)
-            .set({ ...data, createdAt: undefined })
+            .set(data)
             .where((0, drizzle_orm_1.eq)(schema_1.users.id, id))
             .returning();
         return user || undefined;
@@ -94,7 +94,7 @@ class DatabaseStorage {
     }
     // Alimentos
     async getAllAlimentos() {
-        const result = await db_1.db.select().from(schema_1.alimentos).orderBy((0, drizzle_orm_1.desc)(schema_1.alimentos.createdAt));
+        const result = await db_1.db.select().from(schema_1.alimentos).orderBy((0, drizzle_orm_1.desc)(schema_1.alimentos.id));
         return result;
     }
     async getAlimento(id) {
@@ -154,7 +154,7 @@ class DatabaseStorage {
                             shelfLife: supaAlimento.shelf_life,
                             dataEntrada: supaAlimento.data_entrada,
                             dataSaida: supaAlimento.data_saida,
-                            categoria: supaAlimento.categoria,
+                            // categoria não existe em Supabase
                             alertasConfig: supaAlimento.alertas_config,
                             cadastradoPor: supaAlimento.cadastrado_por,
                         };
@@ -183,10 +183,10 @@ class DatabaseStorage {
                                 shelfLife: supaAlimento.shelf_life,
                                 dataEntrada: supaAlimento.data_entrada,
                                 dataSaida: supaAlimento.data_saida,
-                                categoria: supaAlimento.categoria,
+                                // categoria não existe em Supabase
                                 alertasConfig: supaAlimento.alertas_config,
                                 cadastradoPor: supaAlimento.cadastrado_por,
-                                createdAt: new Date(),
+                                // createdAt não existe em Supabase
                             };
                         }
                     }
@@ -200,10 +200,10 @@ class DatabaseStorage {
             }
             // 4. Se não conseguiu inserir no Supabase (offline ou erro), inserir localmente e agendar sync
             const localAlimento = {
-                id: Math.max(1, Math.floor(Math.random() * 1000000)),
                 ...alimento,
                 cadastradoPor: supabaseUserId,
-                createdAt: new Date(),
+                // createdAt e updatedAt não existem no Supabase
+                // id é GENERATED ALWAYS - não pode ser fornecido manualmente
             };
             try {
                 const [dbInserted] = await db_1.db.insert(schema_1.alimentos).values(localAlimento).returning();
@@ -369,7 +369,7 @@ class DatabaseStorage {
                 id: userId,
                 nome: local.nome,
                 email: local.email,
-                criado_em: new Date().toISOString(),
+                created_at: new Date().toISOString(),
                 color: local.color,
             };
             // Usar service-role client para upsert administrativo (evita problemas RLS)
@@ -537,11 +537,11 @@ class InMemoryStorage {
                         id: u.id,
                         nome: u.nome || '',
                         email: u.email || '',
-                        password: u.password || '',
                         color: u.color || '',
-                        criadoEm: u.criado_em ? new Date(u.criado_em) : new Date(),
-                        resetToken: null,
-                        resetTokenExpiry: null,
+                        // adapt to DB field created_at if present
+                        createdAt: u.created_at ? new Date(u.created_at) : (u.criado_em ? new Date(u.criado_em) : new Date()),
+                        resetToken: u.reset_token || null,
+                        resetTokenExpiry: u.reset_token_expiry ? new Date(u.reset_token_expiry) : null,
                     }));
                     console.log(`InMemoryStorage: carregados ${this.users.length} users do Supabase`);
                 }
@@ -687,7 +687,7 @@ class InMemoryStorage {
                 id: userId,
                 nome: local.nome,
                 email: local.email,
-                criado_em: new Date().toISOString(),
+                created_at: new Date().toISOString(),
                 color: local.color,
             };
             let created = null;
@@ -754,9 +754,7 @@ class InMemoryStorage {
             id: providedId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             nome: insertUser.nome || '',
             email: insertUser.email || '',
-            password: insertUser.password || '',
             color,
-            criadoEm: new Date(),
             resetToken: null,
             resetTokenExpiry: null
         };
@@ -960,7 +958,6 @@ class InMemoryStorage {
                 categoria: insertAlimento.categoria,
                 alertasConfig: alertasConfig,
                 cadastradoPor: supabaseUserId || userId,
-                createdAt: new Date(),
                 updatedAt: new Date(),
             };
             this.alimentos.push(alimento);
@@ -1036,7 +1033,7 @@ class InMemoryStorage {
                         shelf_life: alimento.shelfLife,
                         data_entrada: alimento.dataEntrada,
                         data_saida: alimento.dataSaida,
-                        categoria: alimento.categoria,
+                        // categoria não existe no Supabase
                         alertas_config: alimento.alertasConfig,
                     };
                     const { error } = await supabaseClient_1.supabase.from('alimentos').update(payload).eq('id', id);

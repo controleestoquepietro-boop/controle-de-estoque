@@ -21,6 +21,10 @@ app.use((0, cors_1.default)({
             return callback(null, true);
         }
         const frontend = process.env.FRONTEND_URL;
+        // Permitir requisições sem origin (de APIs, testes, backends, etc)
+        if (!origin) {
+            return callback(null, true);
+        }
         if (frontend && typeof origin === 'string' && origin === frontend) {
             return callback(null, true);
         }

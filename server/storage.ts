@@ -90,7 +90,7 @@ export class DatabaseStorage implements IStorage {
   async updateUser(id: string, data: Partial<User>): Promise<User | undefined> {
     const [user] = await db
       .update(users)
-      .set({ ...data, createdAt: undefined } as any)
+      .set(data as any)
       .where(eq(users.id, id))
       .returning();
     return user || undefined;
@@ -131,7 +131,7 @@ export class DatabaseStorage implements IStorage {
 
   // Alimentos
   async getAllAlimentos(): Promise<Alimento[]> {
-    const result = await db.select().from(alimentos).orderBy(desc(alimentos.createdAt));
+    const result = await db.select().from(alimentos).orderBy(desc(alimentos.id));
     return result;
   }
 
@@ -193,7 +193,7 @@ export class DatabaseStorage implements IStorage {
               shelfLife: supaAlimento.shelf_life,
               dataEntrada: supaAlimento.data_entrada,
               dataSaida: supaAlimento.data_saida,
-              categoria: supaAlimento.categoria,
+              // categoria não existe em Supabase
               alertasConfig: supaAlimento.alertas_config,
               cadastradoPor: supaAlimento.cadastrado_por,
             };
@@ -222,10 +222,10 @@ export class DatabaseStorage implements IStorage {
                 shelfLife: supaAlimento.shelf_life,
                 dataEntrada: supaAlimento.data_entrada,
                 dataSaida: supaAlimento.data_saida,
-                categoria: supaAlimento.categoria,
+                // categoria não existe em Supabase
                 alertasConfig: supaAlimento.alertas_config,
                 cadastradoPor: supaAlimento.cadastrado_por,
-                createdAt: new Date(),
+                // createdAt não existe em Supabase
               } as Alimento;
             }
           }
@@ -237,11 +237,11 @@ export class DatabaseStorage implements IStorage {
       }
 
       // 4. Se não conseguiu inserir no Supabase (offline ou erro), inserir localmente e agendar sync
-      const localAlimento: Alimento = {
-        id: Math.max(1, Math.floor(Math.random() * 1000000)),
+      const localAlimento = {
         ...alimento,
         cadastradoPor: supabaseUserId,
-        createdAt: new Date(),
+        // createdAt e updatedAt não existem no Supabase
+        // id é GENERATED ALWAYS - não pode ser fornecido manualmente
       } as any;
 
       try {
@@ -405,7 +405,7 @@ export class DatabaseStorage implements IStorage {
         id: userId,
         nome: local.nome,
         email: local.email,
-        criado_em: new Date().toISOString(),
+        created_at: new Date().toISOString(),
         color: local.color,
       };
 
@@ -427,10 +427,10 @@ export class DatabaseStorage implements IStorage {
         return undefined;
       } 
       
-      if (created) {
-        console.log('✅ Usuário criado/atualizado no Supabase com ID:', created.id);
-        return created.id;
-      }
+        if (created) {
+          console.log('✅ Usuário criado/atualizado no Supabase com ID:', created.id);
+          return created.id;
+        }
 
       // 5. Se o upsert não retornou dados, buscar novamente por email
       const { data: finalCheck } = await supabase
@@ -588,15 +588,15 @@ class InMemoryStorage implements IStorage {
           console.warn('InMemoryStorage: erro ao carregar users do Supabase:', usersErr.message || usersErr);
         } else if (supaUsers && Array.isArray(supaUsers)) {
           this.users = supaUsers.map((u: any) => ({
-            id: u.id,
-            nome: u.nome || '',
-            email: u.email || '',
-            password: u.password || '',
-            color: u.color || '',
-            criadoEm: u.criado_em ? new Date(u.criado_em) : new Date(),
-            resetToken: null,
-            resetTokenExpiry: null,
-          } as User));
+              id: u.id,
+              nome: u.nome || '',
+              email: u.email || '',
+              color: u.color || '',
+              // adapt to DB field created_at if present
+              createdAt: u.created_at ? new Date(u.created_at) : (u.criado_em ? new Date(u.criado_em) : new Date()),
+              resetToken: u.reset_token || null,
+              resetTokenExpiry: u.reset_token_expiry ? new Date(u.reset_token_expiry) : null,
+            } as User));
           console.log(`InMemoryStorage: carregados ${this.users.length} users do Supabase`);
         }
 
@@ -748,7 +748,7 @@ class InMemoryStorage implements IStorage {
         id: userId,
         nome: local.nome,
         email: local.email,
-        criado_em: new Date().toISOString(),
+        created_at: new Date().toISOString(),
         color: local.color,
       };
 
@@ -828,9 +828,7 @@ class InMemoryStorage implements IStorage {
       id: providedId || `${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
       nome: insertUser.nome || '',
       email: insertUser.email || '',
-      password: insertUser.password || '',
       color,
-      criadoEm: new Date(),
       resetToken: null,
       resetTokenExpiry: null
     } satisfies User;
@@ -1046,11 +1044,8 @@ class InMemoryStorage implements IStorage {
         categoria: (insertAlimento as any).categoria,
         alertasConfig: alertasConfig,
         cadastradoPor: supabaseUserId || userId,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as Alimento;
-
-      this.alimentos.push(alimento);
+      updatedAt: new Date(),
+    } as Alimento;      this.alimentos.push(alimento);
 
       // Tentar sincronizar com Supabase em background (não bloquear a resposta)
       (async () => {
@@ -1130,7 +1125,7 @@ class InMemoryStorage implements IStorage {
             shelf_life: alimento.shelfLife,
             data_entrada: alimento.dataEntrada,
             data_saida: alimento.dataSaida,
-            categoria: alimento.categoria,
+            // categoria não existe no Supabase
             alertas_config: alimento.alertasConfig,
           };
           

@@ -10,7 +10,10 @@
     "build": "npm run clean && npm run build:app && npm run build:server",
     "build:app": "vite build",
     "build:server": "tsc -p tsconfig.build.json",
-    "start": "node dist/server/index.js"
+    "start": "node dist/server/index.js",
+    "electron-dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && tsc -p tsconfig.json --outDir dist-electron && electron dist-electron/electron/main.js\"",
+    "electron-build": "vite build && tsc -p tsconfig.json --outDir dist-electron && electron-builder",
+    "electron-start": "electron dist-electron/electron/main.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -111,6 +114,9 @@
     "concurrently": "^8.2.2",
     "cross-env": "^10.1.0",
     "drizzle-kit": "^0.31.4",
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.4",
+    "electron-is-dev": "^2.0.0",
     "esbuild": "^0.25.12",
     "fs-extra": "^11.3.2",
     "png-to-ico": "^3.0.1",

@@ -22,7 +22,7 @@ async function main() {
         data_validade: (a as any).dataValidade,
         data_entrada: a.dataEntrada,
         data_saida: a.dataSaida || null,
-        categoria: a.categoria || null,
+        // categoria não existe no Supabase
         cadastrado_por: a.cadastradoPor || null,
         shelf_life: a.shelfLife || null,
         peso_por_caixa: a.pesoPorCaixa || null,

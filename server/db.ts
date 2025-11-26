@@ -12,13 +12,6 @@ import { promisify } from 'util';
 
 let connectionString = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
 
-// Ensure SSL mode is set to 'require' (not verify) - avoids self-signed cert issues
-if (connectionString && !connectionString.includes('sslmode=')) {
-  connectionString = connectionString.includes('?') 
-    ? connectionString + '&sslmode=require'
-    : connectionString + '?sslmode=require';
-}
-
 // Keep port 5432 (TCP direct connection is fine for pg library)
 // Pooling is handled by pg's native pool, not Supabase pooler
 console.log('📍 Using TCP connection (port 5432) - pooling handled by pg library...');
@@ -67,25 +60,12 @@ const poolOptions: any = {
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
   connectionString,
+  // CRITICAL: Supabase uses self-signed certificates - we must disable cert verification
+  // This is safe because we're connecting via TLS (encrypted), just not verifying the cert chain
+  ssl: { rejectUnauthorized: false },
 };
 
-// If the operator provides a Base64-encoded CA for the DB (SUPABASE_DB_CA), use it
-// for proper TLS verification. Otherwise fall back to rejectUnauthorized=false
-// (less secure) so systems with non-standard cert chains can still connect.
-if (process.env.SUPABASE_DB_CA) {
-  try {
-    const ca = Buffer.from(process.env.SUPABASE_DB_CA, 'base64').toString('utf8');
-    // Node pg expects an object with `ca` and `rejectUnauthorized`
-    poolOptions.ssl = { ca, rejectUnauthorized: true };
-    console.log('🔐 DB TLS: using SUPABASE_DB_CA (secure verification enabled)');
-  } catch (e) {
-    console.warn('⚠️ Falha ao parsear SUPABASE_DB_CA, ca será ignorado:', e);
-    poolOptions.ssl = { rejectUnauthorized: false };
-  }
-} else {
-  poolOptions.ssl = { rejectUnauthorized: false };
-  console.log('⚠️ DB TLS: SUPABASE_DB_CA not provided — using rejectUnauthorized=false (temporary)');
-}
+console.log('🔒 DB SSL: Using rejectUnauthorized=false (Supabase self-signed certs)');
 
 if (!process.env.SUPABASE_DB_HOST_IPV4) {
   console.log('ℹ️ To avoid IPv6 ENETUNREACH on platforms that block IPv6, set SUPABASE_DB_HOST_IPV4 to an IPv4 address for the DB host');

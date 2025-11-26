@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Toaster } from "./components/ui/toaster";
 import ErrorBoundary from './components/error-boundary';
+import { TitleBar } from "./components/title-bar";
 import NotFound from "./pages/not-found";
 import Login from "./pages/login";
 import Register from "./pages/register";
@@ -70,8 +71,12 @@ function SimpleHashRouter() {
 }
 
 export default function App() {
+  // Verificar se está rodando no Electron
+  const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
+
   return (
     <ErrorBoundary>
+      {isElectron && <TitleBar />}
       <SimpleHashRouter />
       <Toaster />
     </ErrorBoundary>

@@ -10,7 +10,7 @@ async function main() {
         id: 'adm',
         nome: 'adm',
         email: 'adm@dev.local',
-        criado_em: new Date().toISOString(),
+        created_at: new Date().toISOString(),
         color: 'hsl(200 70% 40%)',
     };
     try {

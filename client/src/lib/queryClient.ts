@@ -33,25 +33,30 @@ export async function apiRequest(
       }
 
       const res = await fetch(url, opts);
-      // Se não OK, tentar extrair mensagem do corpo e lançar erro
+      
+      // Ler o body uma única vez de forma robusta (evita double-read)
+      const raw = await res.text();
+
       if (!res.ok) {
-        let bodyText = '';
+        let bodyText = `HTTP ${res.status} ${res.statusText}`;
         try {
-          const json = await res.json();
-          bodyText = json?.message || JSON.stringify(json);
-        } catch (_) {
-          bodyText = await res.text();
+          const json = raw ? JSON.parse(raw) : null;
+          bodyText = json?.message || JSON.stringify(json) || bodyText;
+        } catch (_e) {
+          if (raw) bodyText = raw;
         }
         const err = new Error(bodyText || `HTTP ${res.status} ${res.statusText}`);
         (err as any).status = res.status;
         throw err;
       }
 
-      // Retornar o JSON do backend (parsed)
+      // Resposta OK - tentar parsear JSON, se não retornar null
+      if (!raw) return null;
       try {
-        return await res.json();
+        return JSON.parse(raw);
       } catch (_) {
-        return null;
+        // Se não for JSON válido, retornar texto cru
+        return raw;
       }
     }
 

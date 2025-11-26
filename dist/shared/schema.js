@@ -14,10 +14,12 @@ exports.users = (0, pg_core_1.pgTable)("users", {
     id: (0, pg_core_1.varchar)("id").primaryKey().default((0, drizzle_orm_1.sql) `gen_random_uuid()`),
     nome: (0, pg_core_1.text)("nome").notNull(),
     email: (0, pg_core_1.text)("email").notNull().unique(),
-    password: (0, pg_core_1.text)("password").notNull(),
+    // NOTE: production Supabase may not store passwords in `public.users` (auth handles it).
+    // Omitimos `password` aqui para compatibilidade com o banco em produção.
     resetToken: (0, pg_core_1.text)("reset_token"),
     resetTokenExpiry: (0, pg_core_1.timestamp)("reset_token_expiry"),
-    criadoEm: (0, pg_core_1.timestamp)("criado_em").defaultNow().notNull(), // ✅ campo certo
+    // TODO: verifique se a coluna "created_at" existe no seu banco Supabase production
+    // createdAt: timestamp("created_at").defaultNow().notNull(),
     // Cor visual do usuário (ex: "hsl(120 70% 40%)") — preenchida pelo servidor ao criar o usuário
     color: (0, pg_core_1.text)("color").notNull().unique(),
 });
@@ -36,13 +38,13 @@ exports.alimentos = (0, pg_core_1.pgTable)("alimentos", {
     shelfLife: (0, pg_core_1.integer)("shelf_life").notNull(),
     dataEntrada: (0, pg_core_1.text)("data_entrada").notNull(),
     dataSaida: (0, pg_core_1.text)("data_saida"),
-    categoria: (0, pg_core_1.varchar)('categoria', { length: 100 }),
+    // categoria: varchar('categoria', { length: 100 }), // NÃO EXISTE NO SUPABASE
     // Configurações de alertas como JSON
     alertasConfig: (0, pg_core_1.jsonb)("alertas_config").notNull().$type(),
     // Metadata
     cadastradoPor: (0, pg_core_1.varchar)("cadastrado_por").notNull().references(() => exports.users.id),
-    createdAt: (0, pg_core_1.timestamp)("created_at").defaultNow().notNull(),
-    updatedAt: (0, pg_core_1.timestamp)("updated_at").defaultNow().notNull(),
+    // createdAt: timestamp("created_at").defaultNow().notNull(), // NÃO EXISTE NO SUPABASE
+    // updatedAt: timestamp("updated_at").defaultNow().notNull(),  // NÃO EXISTE NO SUPABASE
 });
 // Tabela de modelos de produtos (template) - baseado na planilha Excel
 exports.modelosProdutos = (0, pg_core_1.pgTable)("modelos_produtos", {

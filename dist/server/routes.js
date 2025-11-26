@@ -44,6 +44,7 @@ const express_session_1 = __importDefault(require("express-session"));
 const memorystore_1 = __importDefault(require("memorystore"));
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const crypto_1 = __importDefault(require("crypto"));
+const zod_1 = require("zod");
 const schema_1 = require("../shared/schema");
 const supabaseClient_1 = require("./supabaseClient");
 const MemoryStore = (0, memorystore_1.default)(express_session_1.default);
@@ -98,12 +99,27 @@ async function registerRoutes(app) {
             const devEmail = String(req.headers['x-dev-impersonate']);
             const devUser = { id: `dev-${Date.now()}`, nome: devEmail.split('@')[0], email: devEmail };
             req.user = devUser;
+            req.userId = devUser.id;
             console.log('✅ Dev bypass (x-dev-impersonate) ativado para:', devEmail);
             return next();
         }
         // AUTENTICAÇÃO PRIMÁRIA: Validar via req.session.userId (Express session cookie)
         if (req.session && req.session.userId) {
-            req.user = { id: req.session.userId };
+            const userId = req.session.userId;
+            try {
+                // Buscar dados do usuário no banco de dados
+                const userFromDb = await storage_1.storage.getUser(userId);
+                if (userFromDb) {
+                    req.user = userFromDb;
+                }
+                else {
+                    req.user = { id: userId };
+                }
+            }
+            catch {
+                req.user = { id: userId };
+            }
+            req.userId = userId;
             console.log(`✅ Autenticado via session_id - userId: ${req.session.userId.substring(0, 20)}`);
             return next();
         }
@@ -121,7 +137,19 @@ async function registerRoutes(app) {
                         const expected = crypto_1.default.createHmac('sha256', secret).update(uid).digest('hex');
                         if (sig === expected) {
                             // ✅ Cookie assinado válido
-                            req.user = { id: uid };
+                            try {
+                                const userFromDb = await storage_1.storage.getUser(uid);
+                                if (userFromDb) {
+                                    req.user = userFromDb;
+                                }
+                                else {
+                                    req.user = { id: uid };
+                                }
+                            }
+                            catch {
+                                req.user = { id: uid };
+                            }
+                            req.userId = uid;
                             // Tentar restaurar sessão no store para proxies/redeploys
                             try {
                                 if (!req.session)
@@ -350,7 +378,7 @@ async function registerRoutes(app) {
                 return res.json({ message: 'Se o email existir, você receberá instruções de recuperação' });
             }
             const resetToken = crypto_1.default.randomBytes(32).toString('hex');
-            const resetTokenExpiry = new Date(Date.now() + 3600000).toISOString(); // 1 hora
+            const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hora
             await storage_1.storage.updateUser(user.id, { resetToken, resetTokenExpiry });
             const frontendBase = process.env.FRONTEND_URL || (`http://localhost:${process.env.PORT || 5173}`);
             // Aplicação usa hash routing, então incluimos o token como query na hash
@@ -377,9 +405,9 @@ async function registerRoutes(app) {
             //     html: `<p>Clique no link abaixo para redefinir sua senha:</p><a href="${resetUrl}">${resetUrl}</a><p>O link expira em 1 hora.</p>`
             //   });
             // }
-            // Em desenvolvimento, retornar o link diretamente
-            if (process.env.NODE_ENV !== 'production') {
-                return res.json({ message: 'Email de recuperação gerado. Em desenvolvimento, verifique o console do servidor.', resetToken, resetUrl });
+            // Em desenvolvimento OU se ALLOW_DEV_RESET=1, retornar o link diretamente
+            if (process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_RESET === '1') {
+                return res.json({ message: 'Email de recuperação gerado. Link de reset disponível.', resetToken, resetUrl });
             }
             // Em produção, retornar mensagem genérica (email será enviado se configurado)
             return res.json({ message: 'Se o email existir, você receberá instruções de recuperação' });
@@ -387,6 +415,66 @@ async function registerRoutes(app) {
         catch (error) {
             console.error('Erro ao solicitar recuperação:', error);
             res.status(400).json({ message: error.message || 'Erro ao solicitar recuperação de senha' });
+        }
+    });
+    // Trocar senha (change password) - usuário autenticado
+    app.post('/api/auth/change-password', requireAuth, async (req, res) => {
+        try {
+            const userId = req.userId;
+            const data = zod_1.z.object({
+                oldPassword: zod_1.z.string(),
+                newPassword: zod_1.z.string()
+            }).parse(req.body);
+            const user = await storage_1.storage.getUser(userId);
+            if (!user) {
+                return res.status(404).json({ message: 'Usuário não encontrado' });
+            }
+            try {
+                // 1. Verificar senha antiga fazendo login fresco
+                console.log('🔐 Verificando senha atual para:', user.email);
+                const { data: authData, error: loginError } = await supabaseClient_1.supabase.auth.signInWithPassword({
+                    email: user.email,
+                    password: data.oldPassword
+                });
+                if (loginError || !authData.user) {
+                    console.log('❌ Senha atual incorreta para:', user.email, loginError);
+                    return res.status(401).json({ message: 'Senha atual incorreta' });
+                }
+                // 2. Usar a sessão retornada para atualizar a senha
+                const { session } = authData;
+                if (!session) {
+                    return res.status(400).json({ message: 'Erro ao obter sessão de autenticação' });
+                }
+                // 3. Criar um novo cliente Supabase com o token da sessão
+                const supabaseAuth = supabaseClient_1.supabase;
+                // Estabelecer a sessão no cliente
+                const { error: setSessionError } = await supabaseAuth.auth.setSession({
+                    access_token: session.access_token,
+                    refresh_token: session.refresh_token
+                });
+                if (setSessionError) {
+                    console.error('❌ Erro ao estabelecer sessão:', setSessionError);
+                    return res.status(400).json({ message: 'Erro ao atualizar senha' });
+                }
+                // 4. Agora atualizar a senha
+                const { error: updateError } = await supabaseAuth.auth.updateUser({
+                    password: data.newPassword
+                });
+                if (updateError) {
+                    console.error('❌ Erro ao atualizar senha:', updateError);
+                    return res.status(400).json({ message: 'Erro ao atualizar senha: ' + updateError.message });
+                }
+                console.log('✅ Senha alterada com sucesso para usuário:', userId);
+                return res.json({ message: 'Senha alterada com sucesso' });
+            }
+            catch (authError) {
+                console.error('❌ Erro durante troca de senha:', authError);
+                return res.status(400).json({ message: 'Erro ao atualizar senha: ' + authError.message });
+            }
+        }
+        catch (error) {
+            console.error('Erro ao trocar senha:', error);
+            res.status(400).json({ message: error.message || 'Erro ao trocar senha' });
         }
     });
     // Resetar senha com token
@@ -401,27 +489,45 @@ async function registerRoutes(app) {
             if (new Date() > new Date(user.resetTokenExpiry)) {
                 return res.status(400).json({ message: 'Token expirado. Solicite uma nova recuperação.' });
             }
-            // Atualizar a senha (hash) e limpar token
-            const hashed = await bcryptjs_1.default.hash(data.newPassword, 10);
-            await storage_1.storage.updateUser(user.id, { password: hashed, resetToken: null, resetTokenExpiry: null });
-            // Se houver service role key, também atualizamos a senha no Supabase Auth
+            // Verificar se temos service role key
+            const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+            const supabaseUrl = process.env.SUPABASE_URL;
+            if (!serviceRoleKey || !supabaseUrl) {
+                console.error('❌ SUPABASE_SERVICE_ROLE_KEY ou SUPABASE_URL ausentes. Abortando reset para evitar inconsistência.');
+                return res.status(500).json({ message: 'Configuração de autenticação incompleta. Defina SUPABASE_SERVICE_ROLE_KEY.' });
+            }
+            // Usar API REST do Supabase Admin diretamente em vez do cliente JS
+            // (cliente JS tem problema com encoding de headers em alguns ambientes)
             try {
-                const svc = supabaseClient_1.supabaseService || null;
-                if (svc && svc.auth && svc.auth.admin && typeof svc.auth.admin.updateUserById === 'function') {
-                    try {
-                        // @ts-ignore - admin API
-                        const updateRes = await svc.auth.admin.updateUserById(user.id, { password: data.newPassword });
-                        console.log('✅ Supabase password updated for user', user.id, updateRes);
-                    }
-                    catch (supErr) {
-                        console.warn('⚠️ Falha ao atualizar senha no Supabase (admin):', supErr);
-                    }
+                const adminApiUrl = `${supabaseUrl}/auth/v1/admin/users/${user.id}?apikey=${encodeURIComponent(serviceRoleKey)}`;
+                console.log(`📝 Atualizando senha via Admin API REST para user: ${user.id}`);
+                console.log('🛠 adminApiUrl contains apikey param?', adminApiUrl.includes('?apikey='));
+                const headersObj = {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${serviceRoleKey}`,
+                    'apikey': serviceRoleKey,
+                };
+                console.log('🛠 headers keys being sent:', Object.keys(headersObj));
+                const response = await fetch(adminApiUrl, {
+                    method: 'PUT',
+                    headers: headersObj,
+                    body: JSON.stringify({ password: data.newPassword }),
+                });
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error(`❌ Admin API retornou ${response.status}:`, errorText);
+                    return res.status(500).json({ message: 'Falha ao atualizar senha no servidor de autenticação.' });
                 }
+                console.log('✅ Supabase Admin API atualizou senha com sucesso');
+                // Agora persistimos o hash localmente e removemos o token
+                const hashed = await bcryptjs_1.default.hash(data.newPassword, 10);
+                await storage_1.storage.updateUser(user.id, { password: hashed, resetToken: null, resetTokenExpiry: null });
+                return res.json({ message: 'Senha redefinida com sucesso' });
             }
-            catch (e) {
-                console.warn('⚠️ Erro ao tentar atualizar senha no Supabase:', e);
+            catch (supErr) {
+                console.error('❌ Falha ao atualizar senha via Admin API REST:', supErr);
+                return res.status(500).json({ message: 'Falha ao atualizar senha no servidor de autenticação.' });
             }
-            return res.json({ message: 'Senha redefinida com sucesso' });
         }
         catch (error) {
             console.error('Erro ao resetar senha:', error);
@@ -465,7 +571,7 @@ async function registerRoutes(app) {
             try {
                 const byId = await supabaseClient_1.supabase
                     .from("users")
-                    .select("id, nome, email, criado_em")
+                    .select("id, nome, email, created_at")
                     .eq("id", data.user.id)
                     .maybeSingle();
                 userRow = byId.data || null;
@@ -473,7 +579,7 @@ async function registerRoutes(app) {
                     // Fallback: procurar por email (poderá existir uma linha com outro id)
                     const byEmail = await supabaseClient_1.supabase
                         .from("users")
-                        .select("id, nome, email, criado_em")
+                        .select("id, nome, email, created_at")
                         .eq("email", data.user.email)
                         .maybeSingle();
                     userRow = byEmail.data || null;
@@ -750,7 +856,7 @@ async function registerRoutes(app) {
                 id: userId,
                 nome: 'Usuário',
                 email: '',
-                criado_em: new Date().toISOString(),
+                created_at: new Date().toISOString(),
             });
         }
         catch (error) {
@@ -760,6 +866,25 @@ async function registerRoutes(app) {
     });
     // Removido endpoint de recuperação de senha - agora usando Supabase client diretamente
     // ============ MODELOS DE PRODUTOS ============
+    // Compatibilidade: rotas antigas do cliente podiam chamar '/import-excel'.
+    // Reescrevemos para o handler atual '/api/modelos-produtos/import' para
+    // evitar 404 em clientes com bundle antigo (cache). Isto é uma correção
+    // temporária até todos os usuários atualizarem o bundle no navegador.
+    app.use((req, res, next) => {
+        try {
+            if (req.method === 'POST' && req.path === '/api/modelos-produtos/import-excel') {
+                console.log('🔁 Reescrevendo /api/modelos-produtos/import-excel -> /api/modelos-produtos/import (compat)');
+                // Preservar query string, se houver
+                const qsIndex = req.url.indexOf('?');
+                const qs = qsIndex >= 0 ? req.url.slice(qsIndex) : '';
+                req.url = '/api/modelos-produtos/import' + qs;
+            }
+        }
+        catch (e) {
+            console.warn('⚠️ Falha ao reescrever rota legacy import-excel:', e);
+        }
+        return next();
+    });
     // Listar todos os modelos de produtos
     app.get('/api/modelos-produtos', requireAuth, async (req, res) => {
         try {
@@ -805,17 +930,38 @@ async function registerRoutes(app) {
         }
     });
     // Importar modelos de produtos de planilha Excel
-    app.post('/api/modelos-produtos/import-excel', requireAuth, async (req, res) => {
+    app.post('/api/modelos-produtos/import', requireAuth, async (req, res) => {
         try {
-            const { modelos } = req.body;
-            if (!Array.isArray(modelos)) {
-                return res.status(400).json({ message: 'Formato inválido' });
+            console.log('📍 POST /api/modelos-produtos/import');
+            console.log('📍 Body type:', typeof req.body);
+            console.log('📍 Body is array:', Array.isArray(req.body));
+            let { modelos } = req.body;
+            console.log('📍 Destructured modelos type:', typeof modelos);
+            console.log('📍 Destructured modelos is array:', Array.isArray(modelos));
+            // Aceitar: array direto, objeto com propriedade 'modelos', ou um único objeto de modelo
+            if (Array.isArray(req.body)) {
+                modelos = req.body;
+                console.log('📍 Using req.body directly as array');
             }
+            else if (!modelos && req.body && typeof req.body === 'object' && !Array.isArray(req.body) && req.body.codigoProduto) {
+                // Se for um único objeto de modelo (PowerShell envia assim), envolver em array
+                modelos = [req.body];
+                console.log('📍 Single modelo object detected, wrapping in array');
+            }
+            console.log('📍 Final modelos type:', typeof modelos);
+            console.log('📍 Final modelos is array:', Array.isArray(modelos));
+            if (!Array.isArray(modelos)) {
+                console.log('📍 ERROR: Formato inválido - modelos:', modelos);
+                return res.status(400).json({ message: 'Formato inválido - esperado array ou { modelos: [] }' });
+            }
+            console.log(`📍 OK - Importando ${modelos.length} modelos`);
             let imported = 0;
             let updated = 0;
             const errors = [];
-            for (const modeloData of modelos) {
+            for (let i = 0; i < modelos.length; i++) {
+                const modeloData = modelos[i];
                 try {
+                    console.log(`📍 [${i + 1}/${modelos.length}] Processando: ${modeloData.codigoProduto}`);
                     // Garantir que o campo cadastradoPor exista (preencher com usuário que faz a importação ou 'SISTEMA')
                     try {
                         if (!modeloData.cadastradoPor) {
@@ -878,6 +1024,7 @@ async function registerRoutes(app) {
     app.post('/api/alimentos', requireAuth, async (req, res) => {
         try {
             console.log('📍 POST /api/alimentos - Usuário:', req.user.id, 'Dados:', Object.keys(req.body));
+            console.log('🔍 alertasConfig TYPE:', typeof req.body.alertasConfig, 'VALUE:', req.body.alertasConfig);
             const data = schema_1.insertAlimentoSchema.parse({
                 ...req.body,
                 cadastradoPor: req.user.id,
@@ -1096,9 +1243,13 @@ async function registerRoutes(app) {
     // Importar múltiplos alimentos
     app.post('/api/alimentos/import', requireAuth, async (req, res) => {
         try {
-            const { alimentos } = req.body;
+            let { alimentos } = req.body;
+            // Aceitar array direto ou objeto com propriedade 'alimentos'
+            if (Array.isArray(req.body)) {
+                alimentos = req.body;
+            }
             if (!Array.isArray(alimentos)) {
-                return res.status(400).json({ message: 'Formato inválido' });
+                return res.status(400).json({ message: 'Formato inválido - esperado array ou { alimentos: [] }' });
             }
             let imported = 0;
             const errors = [];

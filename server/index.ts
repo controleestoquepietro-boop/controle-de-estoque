@@ -28,6 +28,12 @@ app.use(cors({
     }
 
     const frontend = process.env.FRONTEND_URL;
+    
+    // Permitir requisições sem origin (de APIs, testes, backends, etc)
+    if (!origin) {
+      return callback(null, true);
+    }
+    
     if (frontend && typeof origin === 'string' && origin === frontend) {
       return callback(null, true);
     }

@@ -12,10 +12,12 @@ export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   nome: text("nome").notNull(),
   email: text("email").notNull().unique(),
-  password: text("password").notNull(),
+  // NOTE: production Supabase may not store passwords in `public.users` (auth handles it).
+  // Omitimos `password` aqui para compatibilidade com o banco em produção.
   resetToken: text("reset_token"),
   resetTokenExpiry: timestamp("reset_token_expiry"),
-  criadoEm: timestamp("criado_em").defaultNow().notNull(), // ✅ campo certo
+  // TODO: verifique se a coluna "created_at" existe no seu banco Supabase production
+  // createdAt: timestamp("created_at").defaultNow().notNull(),
   // Cor visual do usuário (ex: "hsl(120 70% 40%)") — preenchida pelo servidor ao criar o usuário
   color: text("color").notNull().unique(),
 });
@@ -35,7 +37,7 @@ export const alimentos = pgTable("alimentos", {
   shelfLife: integer("shelf_life").notNull(),
   dataEntrada: text("data_entrada").notNull(),
   dataSaida: text("data_saida"),
-  categoria: varchar('categoria', { length: 100 }),
+  // categoria: varchar('categoria', { length: 100 }), // NÃO EXISTE NO SUPABASE
 
   // Configurações de alertas como JSON
   alertasConfig: jsonb("alertas_config").notNull().$type<{
@@ -45,8 +47,8 @@ export const alimentos = pgTable("alimentos", {
   }>(),
   // Metadata
   cadastradoPor: varchar("cadastrado_por").notNull().references(() => users.id),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  // createdAt: timestamp("created_at").defaultNow().notNull(), // NÃO EXISTE NO SUPABASE
+  // updatedAt: timestamp("updated_at").defaultNow().notNull(),  // NÃO EXISTE NO SUPABASE
 });
 
 // Tabela de modelos de produtos (template) - baseado na planilha Excel
