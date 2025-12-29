@@ -968,6 +968,27 @@ app.get('/api/auth/me', requireAuth, async (req: any, res) => {
             modeloData.cadastradoPor = 'SISTEMA';
           }
 
+          // Normalizar/sanitizar campos comuns (aceitar string vazia como ausência)
+          try {
+            if (typeof modeloData.temperatura === 'string') {
+              modeloData.temperatura = modeloData.temperatura.trim();
+              if (modeloData.temperatura === '') delete modeloData.temperatura;
+            }
+            // Se temperatura ausente, aplicar fallback seguro para evitar violação NOT NULL no banco
+            if (modeloData.temperatura === undefined || modeloData.temperatura === null) {
+              modeloData.temperatura = 'N/D';
+            }
+
+            if (modeloData.shelfLife === '' || modeloData.shelfLife === null) {
+              delete modeloData.shelfLife;
+            } else if (typeof modeloData.shelfLife === 'string') {
+              const n = Number(modeloData.shelfLife);
+              if (!Number.isFinite(n)) delete modeloData.shelfLife; else modeloData.shelfLife = n;
+            }
+          } catch (e) {
+            // continue — sanificação deve ser silenciosa
+          }
+
           const data = insertModeloProdutoSchema.parse(modeloData);
           
           const existente = await storage.getModeloProdutoByCodigo(data.codigoProduto);
@@ -1277,6 +1298,20 @@ app.post('/api/alimentos', requireAuth, async (req: any, res) => {
 
       for (const alimentoData of alimentos) {
         try {
+          // Normalizar/sanitizar 'temperatura' — aceitar string vazia como ausência
+          try {
+            if (typeof alimentoData.temperatura === 'string') {
+              alimentoData.temperatura = alimentoData.temperatura.trim();
+              if (alimentoData.temperatura === '') delete alimentoData.temperatura;
+            }
+            // Se temperatura ausente, aplicar fallback seguro para evitar erro de validação/NOT NULL
+            if (alimentoData.temperatura === undefined || alimentoData.temperatura === null) {
+              alimentoData.temperatura = 'N/D';
+            }
+          } catch (e) {
+            // Sanitização silenciosa
+          }
+
           const data = insertAlimentoSchema.parse(alimentoData);
 
           // Se o lote estiver ausente durante a importação, atribuímos um padrão
