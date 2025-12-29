@@ -66,6 +66,7 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
     let headerIndex = -1;
     const normalizedExpected = expectedKeys.map((k) => normalize(k));
 
+    // 1) Procurar linha de cabeçalho que contenha qualquer dos nomes esperados
     for (let i = 0; i < Math.min(rows.length, 20); i++) {
       const row = rows[i] || [];
       const found = row.some((cell: any) => {
@@ -86,56 +87,51 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
         headerIndex = i;
         break;
       }
+    }
 
-      // Se não achou com heurística de nomes esperados, tentar heurística genérica: primeira linha com pelo menos 2 células não-vazias
-      if (headerIndex === -1) {
-        for (let i = 0; i < Math.min(rows.length, 20); i++) {
-          const row = rows[i] || [];
-          const nonEmptyCount = row.reduce(
-            (acc, cell) =>
-              acc +
-              (cell !== null && cell !== undefined && String(cell).trim() !== ""
-                ? 1
-                : 0),
-            0,
-          );
-          if (nonEmptyCount >= 2) {
-            headerIndex = i;
-            break;
-          }
-        }
-      }
-
-      if (headerIndex >= 0) {
-        const headers = rows[headerIndex].map((h: any) =>
-          h === null || h === undefined ? "" : String(h).trim(),
+    // 2) Se não encontrou pela heurística de nomes, tentar heurística genérica: primeira linha com pelo menos 2 células não-vazias
+    if (headerIndex === -1) {
+      for (let i = 0; i < Math.min(rows.length, 20); i++) {
+        const row = rows[i] || [];
+        const nonEmptyCount = row.reduce(
+          (acc, cell) =>
+            acc + (cell !== null && cell !== undefined && String(cell).trim() !== "" ? 1 : 0),
+          0,
         );
-        const out: any[] = [];
-        for (let r = headerIndex + 1; r < rows.length; r++) {
-          const row = rows[r];
-          if (
-            !row ||
-            row.every(
-              (c: any) =>
-                c === null || c === undefined || String(c).trim() === "",
-            )
-          )
-            continue; // pular linhas vazias entre cabeçalho e dados
-          const obj: any = {};
-          for (let c = 0; c < headers.length; c++) {
-            const key = headers[c] || `col_${c}`;
-            obj[key] = row[c] !== undefined ? row[c] : null;
-          }
-          out.push(obj);
+        if (nonEmptyCount >= 2) {
+          headerIndex = i;
+          break;
         }
-        jsonData = out;
-      } else {
-        // Se nada foi detectado, aceitar o fallback já gerado por sheet_to_json (caso útil) — normalmente terá chaves __EMPTY
-        jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: null });
       }
+    }
 
-      return jsonData;
-    };
+    // 3) Construir json a partir da linha de cabeçalho encontrada (ou fallback se nada encontrado)
+    if (headerIndex >= 0) {
+      const headers = rows[headerIndex].map((h: any) =>
+        h === null || h === undefined ? "" : String(h).trim(),
+      );
+      const out: any[] = [];
+      for (let r = headerIndex + 1; r < rows.length; r++) {
+        const row = rows[r];
+        if (
+          !row ||
+          row.every((c: any) => c === null || c === undefined || String(c).trim() === "")
+        )
+          continue; // pular linhas vazias entre cabeçalho e dados
+        const obj: any = {};
+        for (let c = 0; c < headers.length; c++) {
+          const key = headers[c] || `col_${c}`;
+          obj[key] = row[c] !== undefined ? row[c] : null;
+        }
+        out.push(obj);
+      }
+      jsonData = out;
+    } else {
+      // Se nada foi detectado, aceitar o fallback já gerado por sheet_to_json (caso útil) — normalmente terá chaves __EMPTY
+      jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+    }
+
+    return jsonData;
 
     const importMutation = useMutation({
       mutationFn: async (alimentos: InsertAlimento[]) => {
@@ -308,6 +304,11 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
               if (!out.dataValidade && nk.includes("valid")) out.dataValidade = val;
               if (!out.shelfLife && (nk.includes("shelf") || nk.includes("prazo") || nk.includes("dias"))) out.shelfLife = val;
               if (!out.pesoPorCaixa && (nk.includes("peso") || nk.includes("weight") || nk.includes("peso_unitario")) && !nk.includes("qtd") && !nk.includes("quant")) out.pesoPorCaixa = val;
+
+              // detectar quantidades por kg e por caixa explicitamente
+              if (!out.qtdKg && nk.includes("qtdkg")) out.qtdKg = val;
+              if (!out.qtdCx && nk.includes("qtdcx")) out.qtdCx = val;
+
               if (!out.quantidade && (nk.includes("qtd") || nk.includes("quant") || nk === "qtdkg")) out.quantidade = val;
               if (!out.unidade && nk.includes("unid")) out.unidade = val;
             } catch (err) {
@@ -324,8 +325,15 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
             out.dataFabricacao = getCellValue(row, ["data fabricacao", "fabricacao", "fabricao", "data de fabricacao"]);
           if (!out.dataValidade)
             out.dataValidade = getCellValue(row, ["data validade", "validade", "vencimento", "data de validade", "expiracao", "expiração"]);
+
+          // quantidade: aceitar QTD KG (peso em kg) ou QTD CX (unidades por caixa)
+          if (!out.qtdKg)
+            out.qtdKg = getCellValue(row, ["qtd kg", "qtdkg", "qtd_kg", "qtdkg"]);
+          if (!out.qtdCx)
+            out.qtdCx = getCellValue(row, ["qtd cx", "qtdcx", "qtd_cx"]);
           if (!out.quantidade)
             out.quantidade = getCellValue(row, ["quantidade", "qtd", "qtd kg", "qtdkg", "quantity", "qtdkg"]);
+
           if (!out.shelfLife)
             out.shelfLife = getCellValue(row, ["shelf life", "shelfLife", "shelf_life", "prazo", "dias_validade", "z06_prazo"]);
           if (!out.pesoPorCaixa)
@@ -370,14 +378,7 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
               dataValidade = fab.toISOString().split("T")[0];
             }
 
-            // quantidade: preferir QTD KG se presente
-            let quantidade = 0;
-            const qtdKg = mapped.quantidade || row["QTD KG"] || row["QTD_KG"] || row["QTDKG"];
-            const qtd = mapped.quantidade || row["QTD"] || row["Qtd"] || row["Quantidade"] || row["quantidade"];
-            if (qtdKg !== undefined && qtdKg !== null && String(qtdKg).trim() !== "") quantidade = Number(qtdKg);
-            else if (qtd !== undefined && qtd !== null && String(qtd).trim() !== "") quantidade = Number(qtd);
-
-            // peso por caixa: considerar mapeamento e aliases
+            // peso por caixa: considerar mapeamento e aliases (precisamos antes de calcular quantidade quando origem for QTD CX)
             const pesoPorCaixaValue =
               mapped.pesoPorCaixa ??
               row["Peso por Caixa (kg)"] ??
@@ -392,8 +393,39 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
 
             const pesoPorCaixaNum =
               pesoPorCaixaValue !== undefined && pesoPorCaixaValue !== null && String(pesoPorCaixaValue).trim() !== ""
-                ? Number(pesoPorCaixaValue)
+                ? Number(String(pesoPorCaixaValue).replace(',', '.'))
                 : undefined;
+
+            // quantidade: lidar com QTD KG, QTD CX (caixas) e QTD genérico
+            let quantidade = 0;
+            const qtdKgRaw = mapped.qtdKg ?? mapped.quantidade ?? row["QTD KG"] ?? row["QTD_KG"] ?? row["QTDKG"];
+            const qtdCxRaw = mapped.qtdCx ?? row["QTD CX"] ?? row["QTD_CX"] ?? row["QTD_CX"] ?? row["QTD CX (caixas)"];
+            const qtdRaw = mapped.quantidade ?? row["QTD"] ?? row["Qtd"] ?? row["Quantidade"] ?? row["quantidade"];
+
+            const toNumber = (v: any) => {
+              if (v === undefined || v === null || String(v).trim() === "") return undefined;
+              const s = String(v).replace(/\./g, '').replace(',', '.');
+              const n = Number(s);
+              return Number.isFinite(n) ? n : undefined;
+            };
+
+            const qtdKg = toNumber(qtdKgRaw);
+            const qtdCx = toNumber(qtdCxRaw);
+            const qtd = toNumber(qtdRaw);
+
+            if (qtdKg !== undefined) {
+              quantidade = qtdKg;
+            } else if (qtdCx !== undefined) {
+              // se houver peso por caixa, converte caixas -> kg
+              if (pesoPorCaixaNum !== undefined) {
+                quantidade = qtdCx * pesoPorCaixaNum;
+              } else {
+                // sem peso por caixa, interpretamos como unidades (caixas)
+                quantidade = qtdCx;
+              }
+            } else if (qtd !== undefined) {
+              quantidade = qtd;
+            }
 
             // unidade
             const unidadeRaw = mapped.unidade ?? row["Unidade"] ?? row["unidade"] ?? row["Unit"] ?? row["UNIT"] ?? row["Unidade Medida"] ?? row["unidade_medida"] ?? row["Z06_UNI"] ?? "kg";
