@@ -135,7 +135,7 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
       }
 
       return jsonData;
-    }
+    };
 
     const importMutation = useMutation({
       mutationFn: async (alimentos: InsertAlimento[]) => {
@@ -721,7 +721,6 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
           </div>
         </DialogContent>
       </Dialog>
-      </>
     );
 }
 }
