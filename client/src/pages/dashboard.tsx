@@ -541,6 +541,22 @@ export default function Dashboard() {
                   </CollapsibleContent>
                 )}
               </Collapsible>
+
+              {/* Botão visível para abrir o importador direto (fallback caso o menu não funcione) */}
+              <Button
+                data-testid="button-import-excel-top"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  console.log("Dashboard: top clique Importar Alimentos");
+                  setImportDialogOpen(true);
+                }}
+                className="gap-2"
+              >
+                <Upload className="h-4 w-4" />
+                Importar Alimentos
+              </Button>
+
               <Button
                 data-testid="button-logout"
                 variant="ghost"
