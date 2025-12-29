@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -28,6 +28,45 @@ interface ImportExcelDialogProps {
 export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
   console.log("ImportExcelDialog render; open=", open);
   const { toast } = useToast();
+
+  // Debug portal: adiciona um banner direto em document.body quando o diálogo estiver aberto
+  React.useEffect(() => {
+    try {
+      const id = 'IMPORT_DEBUG_BANNER_PORTAL';
+      if (open) {
+        let el = document.getElementById(id);
+        if (!el) {
+          el = document.createElement('div');
+          el.id = id;
+          el.textContent = 'DEBUG_PORTAL: ImportExcelDialog OPEN';
+          Object.assign(el.style, {
+            position: 'fixed',
+            left: '8px',
+            top: '8px',
+            zIndex: '2147483647',
+            background: 'rgba(220, 38, 38, 0.95)',
+            color: 'white',
+            padding: '6px 10px',
+            borderRadius: '6px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+          });
+          document.body.appendChild(el);
+        }
+      } else {
+        const existing = document.getElementById('IMPORT_DEBUG_BANNER_PORTAL');
+        if (existing) existing.remove();
+      }
+    } catch (err) {
+      console.warn('Erro ao manipular debug portal:', err);
+    }
+
+    return () => {
+      try {
+        const existing = document.getElementById('IMPORT_DEBUG_BANNER_PORTAL');
+        if (existing) existing.remove();
+      } catch (err) {}
+    };
+  }, [open]);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<any[]>([]);
   const [processedData, setProcessedData] = useState<InsertAlimento[]>([]);
@@ -517,195 +556,202 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
     };
 
     return (
-      <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Importar Alimentos via Excel</DialogTitle>
-            <DialogDescription>
-              Faça upload de um arquivo Excel (.xlsx, .xls) com os dados das
-              entradas de estoque (alimentos/lotes).
-              <br />
-              <span className="text-sm font-medium mt-2 block">
-                Importar alimentos cria registros de estoque (cada linha é uma
-                entrada com lote, quantidade, datas). Use "Importar Modelos"
-                para carregar o catálogo de produtos (códigos/descritivos) que
-                ajudam no auto-preenchimento.
-              </span>
-              <span className="text-sm font-medium mt-2 block">
-                Auto-preenchimento: Se informar Data de Fabricação e Shelf Life,
-                a Data de Validade será calculada automaticamente.
-              </span>
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {/* Upload Area */}
-            <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center hover-elevate">
-              <div className="flex flex-col items-center gap-4">
-                <FileSpreadsheet className="h-12 w-12 text-muted-foreground" />
-                <div>
-                  <Label htmlFor="file-upload" className="cursor-pointer">
-                    <div className="text-base font-medium text-primary hover:underline">
-                      Clique para selecionar um arquivo
-                    </div>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      Aceita arquivos .xlsx, .xls, .xlsm e .xlsb
-                    </div>
-                  </Label>
-                  <input
-                    data-testid="input-file-upload"
-                    id="file-upload"
-                    type="file"
-                    accept=".xlsx,.xls,.xlsm,.xlsb"
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
-                </div>
-                {file && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
-                    <span className="font-medium">{file.name}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Erros */}
-            {errors.length > 0 && (
-              <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-4">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
-                  <div className="flex-1">
-                    <h4 className="font-semibold text-destructive mb-2">
-                      Problemas encontrados:
-                    </h4>
-                    <ul className="text-sm space-y-1">
-                      {errors.slice(0, 5).map((error, i) => (
-                        <li key={i}>• {error}</li>
-                      ))}
-                      {errors.length > 5 && (
-                        <li className="text-muted-foreground">
-                          ... e mais {errors.length - 5} problemas
-                        </li>
-                      )}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Preview */}
-            {preview.length > 0 && (
-              <div>
-                <h4 className="font-semibold mb-2">
-                  Preview ({preview.length} alimentos):
-                </h4>
-                <div className="border rounded-lg overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm border-collapse">
-                      <thead className="bg-muted sticky top-0">
-                        <tr>
-                          <th className="px-2 py-2 text-left text-xs font-semibold">
-                            Código
-                          </th>
-                          <th className="px-2 py-2 text-left text-xs font-semibold">
-                            Nome
-                          </th>
-                          <th className="px-2 py-2 text-left text-xs font-semibold">
-                            Lote
-                          </th>
-                          <th className="px-2 py-2 text-right text-xs font-semibold">
-                            Qtd
-                          </th>
-                          <th className="px-2 py-2 text-left text-xs font-semibold">
-                            Un.
-                          </th>
-                          <th className="px-2 py-2 text-left text-xs font-semibold">
-                            Fab.
-                          </th>
-                          <th className="px-2 py-2 text-left text-xs font-semibold">
-                            Validade
-                          </th>
-                          <th className="px-2 py-2 text-right text-xs font-semibold">
-                            Dias
-                          </th>
-                          <th className="px-2 py-2 text-left text-xs font-semibold">
-                            Temp.
-                          </th>
-                          <th className="px-2 py-2 text-right text-xs font-semibold">
-                            Peso/Cx
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {preview.map((item, i) => (
-                          <tr
-                            key={i}
-                            className="hover:bg-muted/50 transition-colors"
-                          >
-                            <td className="px-2 py-2 font-mono text-xs text-muted-foreground">
-                              {item.codigoProduto || "—"}
-                            </td>
-                            <td className="px-2 py-2 text-sm font-medium truncate max-w-xs">
-                              {item.nome}
-                            </td>
-                            <td className="px-2 py-2 font-mono text-xs">
-                              {item.lote}
-                            </td>
-                            <td className="px-2 py-2 text-right text-xs">
-                              {item.quantidade || 0}
-                            </td>
-                            <td className="px-2 py-2 text-xs uppercase text-muted-foreground">
-                              {item.unidade}
-                            </td>
-                            <td className="px-2 py-2 font-mono text-xs">
-                              {item.dataFabricacao || "—"}
-                            </td>
-                            <td className="px-2 py-2 font-mono text-xs font-semibold">
-                              {item.dataValidade || "—"}
-                            </td>
-                            <td className="px-2 py-2 text-right text-xs text-muted-foreground">
-                              {item.shelfLife || 0}
-                            </td>
-                            <td className="px-2 py-2 text-xs">
-                              {item.temperatura || "—"}
-                            </td>
-                            <td className="px-2 py-2 text-right text-xs text-muted-foreground">
-                              {item.pesoPorCaixa
-                                ? `${item.pesoPorCaixa} kg`
-                                : "—"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Botões */}
-            <div className="flex justify-end gap-3 pt-4">
-              <Button
-                data-testid="button-cancel-import"
-                variant="outline"
-                onClick={handleClose}
-              >
-                Cancelar
-              </Button>
-              <Button
-                data-testid="button-confirm-import"
-                onClick={handleImport}
-                disabled={preview.length === 0 || importMutation.isPending}
-              >
-                {importMutation.isPending
-                  ? "Importando..."
-                  : `Importar ${preview.length} alimentos`}
-              </Button>
-            </div>
+      <>
+        {open && (
+          <div className="fixed left-2 top-2 z-[99999] bg-red-600 text-white px-2 py-1 rounded shadow">
+            DEBUG: ImportExcelDialog OPEN
           </div>
-        </DialogContent>
-      </Dialog>
+        )}
+        <Dialog open={open} onOpenChange={handleDialogOpenChange}>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Importar Alimentos via Excel</DialogTitle>
+              <DialogDescription>
+                Faça upload de um arquivo Excel (.xlsx, .xls) com os dados das
+                entradas de estoque (alimentos/lotes).
+                <br />
+                <span className="text-sm font-medium mt-2 block">
+                  Importar alimentos cria registros de estoque (cada linha é uma
+                  entrada com lote, quantidade, datas). Use "Importar Modelos"
+                  para carregar o catálogo de produtos (códigos/descritivos) que
+                  ajudam no auto-preenchimento.
+                </span>
+                <span className="text-sm font-medium mt-2 block">
+                  Auto-preenchimento: Se informar Data de Fabricação e Shelf
+                  Life, a Data de Validade será calculada automaticamente.
+                </span>
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              {/* Upload Area */}
+              <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center hover-elevate">
+                <div className="flex flex-col items-center gap-4">
+                  <FileSpreadsheet className="h-12 w-12 text-muted-foreground" />
+                  <div>
+                    <Label htmlFor="file-upload" className="cursor-pointer">
+                      <div className="text-base font-medium text-primary hover:underline">
+                        Clique para selecionar um arquivo
+                      </div>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        Aceita arquivos .xlsx, .xls, .xlsm e .xlsb
+                      </div>
+                    </Label>
+                    <input
+                      data-testid="input-file-upload"
+                      id="file-upload"
+                      type="file"
+                      accept=".xlsx,.xls,.xlsm,.xlsb"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </div>
+                  {file && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      <span className="font-medium">{file.name}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Erros */}
+              {errors.length > 0 && (
+                <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-4">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-destructive mb-2">
+                        Problemas encontrados:
+                      </h4>
+                      <ul className="text-sm space-y-1">
+                        {errors.slice(0, 5).map((error, i) => (
+                          <li key={i}>• {error}</li>
+                        ))}
+                        {errors.length > 5 && (
+                          <li className="text-muted-foreground">
+                            ... e mais {errors.length - 5} problemas
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Preview */}
+              {preview.length > 0 && (
+                <div>
+                  <h4 className="font-semibold mb-2">
+                    Preview ({preview.length} alimentos):
+                  </h4>
+                  <div className="border rounded-lg overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm border-collapse">
+                        <thead className="bg-muted sticky top-0">
+                          <tr>
+                            <th className="px-2 py-2 text-left text-xs font-semibold">
+                              Código
+                            </th>
+                            <th className="px-2 py-2 text-left text-xs font-semibold">
+                              Nome
+                            </th>
+                            <th className="px-2 py-2 text-left text-xs font-semibold">
+                              Lote
+                            </th>
+                            <th className="px-2 py-2 text-right text-xs font-semibold">
+                              Qtd
+                            </th>
+                            <th className="px-2 py-2 text-left text-xs font-semibold">
+                              Un.
+                            </th>
+                            <th className="px-2 py-2 text-left text-xs font-semibold">
+                              Fab.
+                            </th>
+                            <th className="px-2 py-2 text-left text-xs font-semibold">
+                              Validade
+                            </th>
+                            <th className="px-2 py-2 text-right text-xs font-semibold">
+                              Dias
+                            </th>
+                            <th className="px-2 py-2 text-left text-xs font-semibold">
+                              Temp.
+                            </th>
+                            <th className="px-2 py-2 text-right text-xs font-semibold">
+                              Peso/Cx
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {preview.map((item, i) => (
+                            <tr
+                              key={i}
+                              className="hover:bg-muted/50 transition-colors"
+                            >
+                              <td className="px-2 py-2 font-mono text-xs text-muted-foreground">
+                                {item.codigoProduto || "—"}
+                              </td>
+                              <td className="px-2 py-2 text-sm font-medium truncate max-w-xs">
+                                {item.nome}
+                              </td>
+                              <td className="px-2 py-2 font-mono text-xs">
+                                {item.lote}
+                              </td>
+                              <td className="px-2 py-2 text-right text-xs">
+                                {item.quantidade || 0}
+                              </td>
+                              <td className="px-2 py-2 text-xs uppercase text-muted-foreground">
+                                {item.unidade}
+                              </td>
+                              <td className="px-2 py-2 font-mono text-xs">
+                                {item.dataFabricacao || "—"}
+                              </td>
+                              <td className="px-2 py-2 font-mono text-xs font-semibold">
+                                {item.dataValidade || "—"}
+                              </td>
+                              <td className="px-2 py-2 text-right text-xs text-muted-foreground">
+                                {item.shelfLife || 0}
+                              </td>
+                              <td className="px-2 py-2 text-xs">
+                                {item.temperatura || "—"}
+                              </td>
+                              <td className="px-2 py-2 text-right text-xs text-muted-foreground">
+                                {item.pesoPorCaixa
+                                  ? `${item.pesoPorCaixa} kg`
+                                  : "—"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Botões */}
+              <div className="flex justify-end gap-3 pt-4">
+                <Button
+                  data-testid="button-cancel-import"
+                  variant="outline"
+                  onClick={handleClose}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  data-testid="button-confirm-import"
+                  onClick={handleImport}
+                  disabled={preview.length === 0 || importMutation.isPending}
+                >
+                  {importMutation.isPending
+                    ? "Importando..."
+                    : `Importar ${preview.length} alimentos`}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </>
     );
   };
 }
