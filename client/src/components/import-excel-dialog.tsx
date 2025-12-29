@@ -85,6 +85,14 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
       });
       if (found) {
         headerIndex = i;
+        // Verificar se a linha de cabeçalho detectada não é "vazia" após trim (ex.: células com apenas espaços)
+        const maybeHeaders = (rows[headerIndex] || []).map((h: any) => (h === null || h === undefined) ? '' : String(h).trim());
+        const nonEmptyCountHeader = maybeHeaders.reduce((acc, h) => acc + (h !== '' ? 1 : 0), 0);
+        if (nonEmptyCountHeader < 2) {
+          // ignora essa linha que tem títulos vazios/espaciais
+          headerIndex = -1;
+          continue;
+        }
         break;
       }
     }
