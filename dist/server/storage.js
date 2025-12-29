@@ -225,6 +225,17 @@ class DatabaseStorage {
                 // id é GENERATED ALWAYS - não pode ser fornecido manualmente
             };
             try {
+                // Garantir que o usuário local exista para satisfazer FK local (caso o sync com Supabase esteja desabilitado)
+                try {
+                    const existingUser = await this.getUser(supabaseUserId);
+                    if (!existingUser) {
+                        console.log('⚠️ Usuário local não encontrado — criando registro mínimo para satisfazer FK:', supabaseUserId);
+                        await this.createUser({ id: supabaseUserId, nome: 'Usuário desconhecido', email: '' });
+                    }
+                }
+                catch (userErr) {
+                    console.warn('Falha ao garantir usuário local antes de inserir alimento:', userErr);
+                }
                 const [dbInserted] = await db_1.db.insert(schema_1.alimentos).values(localAlimento).returning();
                 const result = {
                     ...dbInserted,

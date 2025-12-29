@@ -265,6 +265,17 @@ export class DatabaseStorage implements IStorage {
       } as any;
 
       try {
+        // Garantir que o usuário local exista para satisfazer FK local (caso o sync com Supabase esteja desabilitado)
+        try {
+          const existingUser = await this.getUser(supabaseUserId as string);
+          if (!existingUser) {
+            console.log('⚠️ Usuário local não encontrado — criando registro mínimo para satisfazer FK:', supabaseUserId);
+            await this.createUser({ id: supabaseUserId as string, nome: 'Usuário desconhecido', email: '' } as any);
+          }
+        } catch (userErr) {
+          console.warn('Falha ao garantir usuário local antes de inserir alimento:', userErr);
+        }
+
         const [dbInserted] = await db.insert(alimentos).values(localAlimento as any).returning();
         const result = {
           ...dbInserted,
