@@ -471,9 +471,34 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
     };
 
     const handleImport = () => {
-      if (processedData.length > 0) {
-        importMutation.mutate(processedData);
+      // Debug: logamos sempre que o usuário clicar em importar para facilitar diagnóstico
+      console.log(
+        "ImportExcelDialog: handleImport called",
+        "processedData.length=",
+        processedData.length,
+        "preview.length=",
+        preview.length,
+      );
+
+      const toImport = processedData.length > 0 ? processedData : preview;
+
+      if (toImport.length === 0) {
+        toast({
+          title: "Nenhum item para importar",
+          description: "Faça o upload de um arquivo Excel válido para criar a lista de importação.",
+          variant: "destructive",
+        });
+        return;
       }
+
+      // Feedback imediato ao usuário
+      toast({
+        title: "Iniciando importação",
+        description: `Enviando ${toImport.length} alimentos para importação...`,
+        variant: "default",
+      });
+
+      importMutation.mutate(toImport);
     };
 
     const handleClose = () => {
