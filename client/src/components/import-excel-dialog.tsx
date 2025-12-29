@@ -26,8 +26,8 @@ interface ImportExcelDialogProps {
 }
 
 export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
-  console.log("ImportExcelDialog render; open=", open);
   const { toast } = useToast();
+  console.log("ImportExcelDialog: mounted (open prop)");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<any[]>([]);
   const [processedData, setProcessedData] = useState<InsertAlimento[]>([]);
@@ -515,14 +515,26 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
       if (!isOpen) handleClose();
     };
 
+    // Para garantir visibilidade em casos em que alguma outra camada esteja sobrescrevendo
+    // z-index/opacidade/pointer-events, adicionamos um efeito que aplica classes inline
+    // quando o diálogo está aberto. Isto é temporário para diagnóstico/fix rápido.
+    // Será removido depois de confirmar que o problema foi resolvido.
+    if (typeof window !== "undefined" && open) {
+      const original = document.documentElement.style.cssText;
+      // Forçar estilos no overlay e content via CSSom (apenas durante runtime)
+      document.querySelectorAll('[data-state="open"]').forEach((el) => {
+        (el as HTMLElement).style.zIndex = "99999";
+        (el as HTMLElement).style.pointerEvents = "auto";
+        (el as HTMLElement).style.opacity = "1";
+      });
+    }
+
+    // Renderizar apenas quando 'open' for true para evitar discrepâncias entre estado e DOM
+    if (!open) return null;
+
     return (
-      <>
-        {open && (
-          <div className="fixed left-2 top-2 z-[99999] bg-red-600 text-white px-2 py-1 rounded shadow">DEBUG: ImportExcelDialog OPEN</div>
-        )}
       <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">          <DialogHeader>
             <DialogTitle>Importar Alimentos via Excel</DialogTitle>
             <DialogDescription>
               Faça upload de um arquivo Excel (.xlsx, .xls) com os dados das

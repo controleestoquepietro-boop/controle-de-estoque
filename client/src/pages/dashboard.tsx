@@ -552,20 +552,6 @@ export default function Dashboard() {
                 )}
               </Collapsible>
 
-              {/* Botão de debug visível para abrir o diálogo rapidamente (útil para diagnosticar cliques que não funcionam) */}
-              <Button
-                data-testid="button-import-debug"
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  console.log("Dashboard: import debug button clicked");
-                  setImportDialogOpen(true);
-                }}
-                className="ml-2"
-              >
-                Importar (debug)
-              </Button>
-
               <Button
                 data-testid="button-logout"
                 variant="ghost"
