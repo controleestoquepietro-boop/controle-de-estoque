@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -515,19 +515,60 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
       if (!isOpen) handleClose();
     };
 
-    // Para garantir visibilidade em casos em que alguma outra camada esteja sobrescrevendo
-    // z-index/opacidade/pointer-events, adicionamos um efeito que aplica classes inline
-    // quando o diálogo está aberto. Isto é temporário para diagnóstico/fix rápido.
-    // Será removido depois de confirmar que o problema foi resolvido.
-    if (typeof window !== "undefined" && open) {
-      const original = document.documentElement.style.cssText;
-      // Forçar estilos no overlay e content via CSSom (apenas durante runtime)
-      document.querySelectorAll('[data-state="open"]').forEach((el) => {
-        (el as HTMLElement).style.zIndex = "99999";
-        (el as HTMLElement).style.pointerEvents = "auto";
-        (el as HTMLElement).style.opacity = "1";
+    // Quando o diálogo abre, executar um efeito *após* a montagem para garantir que
+    // o overlay/content existam no DOM e então forçamos estilos de visibilidade
+    // temporariamente (z-index/pointer-events/opacity). Também registramos informações
+    // para diagnóstico. O efeito faz limpeza ao fechar.
+    useEffect(() => {
+      if (typeof window === "undefined") return;
+      if (!open) return;
+
+      console.log(
+        "ImportExcelDialog: effect -> buscando elementos com [data-state=\"open\"]",
+      );
+
+      const modified: HTMLElement[] = [];
+      const selector = '[data-state="open"], [role="dialog"], [data-radix-dialog]';
+      const elements = Array.from(document.querySelectorAll(selector)) as HTMLElement[];
+
+      elements.forEach((el) => {
+        try {
+          // salvar estado anterior para poder restaurar
+          (el as any).__prevVis = {
+            zIndex: el.style.zIndex || "",
+            pointerEvents: el.style.pointerEvents || "",
+            opacity: el.style.opacity || "",
+          };
+          el.style.zIndex = "999999";
+          el.style.pointerEvents = "auto";
+          el.style.opacity = "1";
+          modified.push(el);
+        } catch (err) {
+          console.warn("ImportExcelDialog: falha ao aplicar estilo em elemento:", err);
+        }
       });
-    }
+
+      console.log(
+        "ImportExcelDialog: elementos modificados ->",
+        elements.map((e) => ({ tag: e.tagName, id: e.id, class: e.className, z: window.getComputedStyle(e).zIndex }))
+      );
+
+      return () => {
+        modified.forEach((el) => {
+          try {
+            const prev = (el as any).__prevVis;
+            if (prev) {
+              el.style.zIndex = prev.zIndex;
+              el.style.pointerEvents = prev.pointerEvents;
+              el.style.opacity = prev.opacity;
+              delete (el as any).__prevVis;
+            }
+          } catch (err) {
+            /* ignore */
+          }
+        });
+      };
+    }, [open]);
 
     // Renderizar apenas quando 'open' for true para evitar discrepâncias entre estado e DOM
     if (!open) return null;
