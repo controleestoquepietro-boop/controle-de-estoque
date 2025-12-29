@@ -126,14 +126,15 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
         out.push(obj);
       }
       jsonData = out;
+      return { jsonData, headerIndex, headers };
     } else {
       // Se nada foi detectado, aceitar o fallback já gerado por sheet_to_json (caso útil) — normalmente terá chaves __EMPTY
       jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+      return { jsonData, headerIndex: -1, headers: [] };
     }
+  };
 
-    return jsonData;
-
-    const importMutation = useMutation({
+  const importMutation = useMutation({
       mutationFn: async (alimentos: InsertAlimento[]) => {
         const result = await apiRequest("POST", "/api/alimentos/import", {
           alimentos,
@@ -183,6 +184,7 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
         const worksheet = workbook.Sheets[sheetName];
         const expectedHeaders = [
           "codigo",
+          "cod",
           "codigo produto",
           "z06_cod",
           "codigoProduto",
@@ -196,7 +198,8 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
           "data fabricacao",
           "data validade",
         ];
-        const jsonData = parseWorksheetToJson(worksheet, expectedHeaders);
+        const { jsonData, headerIndex, headers } = parseWorksheetToJson(worksheet, expectedHeaders);
+        console.log('ImportExcel: detected headerIndex=', headerIndex, 'headers=', headers);
 
         // Validar e processar dados
         const processedDataLocal: InsertAlimento[] = [];
@@ -487,6 +490,10 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
         setErrors(validationErrors);
 
         if (validationErrors.length > 0) {
+          // Log detalhado para diagnosticar por que Código/Nome não foram encontrados
+          console.warn('ImportExcel: validationErrors count=', validationErrors.length, 'headerIndex=', headerIndex, 'headers=', headers);
+          console.warn('ImportExcel: sample parsed rows (first 5):', jsonData.slice(0,5));
+
           toast({
             title: "Avisos na importação",
             description: `${validationErrors.length} linhas com problemas`,
@@ -795,5 +802,4 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
         </DialogContent>
       </Dialog>
     );
-}
 }
