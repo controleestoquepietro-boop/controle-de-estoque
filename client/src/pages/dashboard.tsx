@@ -622,21 +622,6 @@ export default function Dashboard() {
         onClose={() => setAuditLogOpen(false)}
       />
 
-      {/* Botão flutuante de depuração (força abrir o modal mesmo com overlays) */}
-      <div className="fixed right-4 bottom-4 z-[999999] pointer-events-auto">
-        <button
-          data-testid="button-import-force"
-          className="bg-red-600 text-white px-4 py-2 rounded shadow hover:bg-red-700"
-          onClick={() => {
-            console.log("Dashboard: import FORCE button clicked");
-            toast({ title: "Abrindo diálogo de importação (force)" });
-            setImportDialogOpen(true);
-          }}
-        >
-          Abrir Import (FORCE)
-        </button>
-      </div>
-
       <NotificationsPanel alimentos={alimentosComputados} />
     </div>
   );
