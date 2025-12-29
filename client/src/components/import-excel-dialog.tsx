@@ -508,8 +508,13 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
       onClose();
     };
 
+    const handleDialogOpenChange = (isOpen: boolean) => {
+      // Somente executar limpeza quando o diálogo for fechado (isOpen === false)
+      if (!isOpen) handleClose();
+    };
+
     return (
-      <Dialog open={open} onOpenChange={handleClose}>
+      <Dialog open={open} onOpenChange={handleDialogOpenChange}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Importar Alimentos via Excel</DialogTitle>
