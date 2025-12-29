@@ -171,6 +171,35 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
         return undefined;
       };
 
+      // Parser robusto para datas que podem vir como Excel serial, Date, ISO ou dd/mm/yyyy
+      const parseAnyDate = (v: any): string | undefined => {
+        if (v === null || v === undefined || (typeof v === 'string' && v.trim() === '')) return undefined;
+        // Excel já convertido para Date (cellDates: true) ou valor Date
+        if (v instanceof Date && !isNaN(v.getTime())) return v.toISOString().split('T')[0];
+        // Excel serial number
+        if (typeof v === 'number') {
+          const date = new Date((v - 25569) * 86400 * 1000);
+          return date.toISOString().split('T')[0];
+        }
+        // String attempts
+        const s = String(v).trim();
+        // YYYY-MM-DD
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        // DD/MM/YYYY or D/M/YYYY
+        const ddmmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+        if (ddmmy) {
+          let day = ddmmy[1].padStart(2, '0');
+          let month = ddmmy[2].padStart(2, '0');
+          let year = ddmmy[3];
+          if (year.length === 2) year = '20' + year;
+          return `${year}-${month}-${day}`;
+        }
+        // Última tentativa com Date parser do JS
+        const parsed = new Date(s);
+        if (!isNaN(parsed.getTime())) return parsed.toISOString().split('T')[0];
+        return undefined;
+      };
+
       jsonData.forEach((row: any, index: number) => {
         try {
           // Extrair código do produto com lookup normalizado
@@ -209,19 +238,23 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
             'LOTE-01'
           ).trim();
           
-          let dataFabricacao = row['Data Fabricação'] || row['dataFabricacao'] || row['Data Fabricacao'] || row['Data de Fabricacao'];
-          if (typeof dataFabricacao === 'number') {
-            const date = new Date((dataFabricacao - 25569) * 86400 * 1000);
-            dataFabricacao = date.toISOString().split('T')[0];
+          // Usar getCellValue para localizar colunas com variações (ex.: FABRICAÇÃO, FABRICAÇÃO, Data Fabricação etc.)
+          const rawDataFabricacao = getCellValue(row, ['data fabricacao', 'fabricacao', 'fabricao', 'data de fabricacao']);
+          let dataFabricacao = parseAnyDate(rawDataFabricacao);
+
+          const rawDataValidade = getCellValue(row, ['data validade', 'validade', 'vencimento', 'data de validade', 'expiracao', 'expiração']);
+          let dataValidade = parseAnyDate(rawDataValidade);
+
+          // Se não tinha data de fabricação, usar hoje
+          if (!dataFabricacao) {
+            dataFabricacao = new Date().toISOString().split('T')[0];
           }
 
-          let dataValidade = row['Data Validade'] || row['dataValidade'] || row['Data de Validade'];
-                    if (dataValidade === undefined && (row['Vencimento'] || row['vencimento'] || row['Expiration'] || row['EXPIRATION'])) {
-                      dataValidade = row['Vencimento'] || row['vencimento'] || row['Expiration'] || row['EXPIRATION'];
-                    }
-          if (typeof dataValidade === 'number') {
-            const date = new Date((dataValidade - 25569) * 86400 * 1000);
-            dataValidade = date.toISOString().split('T')[0];
+          // Se não tinha validade, calcular a partir do shelfLife
+          if (!dataValidade && dataFabricacao && shelfLife) {
+            const fab = new Date(dataFabricacao);
+            fab.setDate(fab.getDate() + Number(shelfLife));
+            dataValidade = fab.toISOString().split('T')[0];
           }
           
           // Extrair shelf life
