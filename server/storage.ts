@@ -270,7 +270,19 @@ export class DatabaseStorage implements IStorage {
           const existingUser = await this.getUser(supabaseUserId as string);
           if (!existingUser) {
             console.log('⚠️ Usuário local não encontrado — criando registro mínimo para satisfazer FK:', supabaseUserId);
-            await this.createUser({ id: supabaseUserId as string, nome: 'Usuário desconhecido', email: '' } as any);
+            // Construir email único caso supabaseUserId não seja um email
+            const email = typeof supabaseUserId === 'string' && supabaseUserId.includes('@')
+              ? supabaseUserId
+              : `user-${String(supabaseUserId).replace(/[^a-z0-9]/gi, '').slice(0,8) || 'x'}@local.${Date.now()}`;
+            const nome = `Usuário desconhecido (${String(supabaseUserId).slice(0,8)})`;
+            const color = `hsl(${Math.floor(Math.random() * 360)} 70% 40%)`;
+
+            try {
+              await this.createUser({ id: supabaseUserId as string, nome, email, color } as any);
+              console.log('✅ Usuário local criado automaticamente para FK:', email);
+            } catch (createErr) {
+              console.warn('Falha ao criar usuário local mínimo:', createErr);
+            }
           }
         } catch (userErr) {
           console.warn('Falha ao garantir usuário local antes de inserir alimento:', userErr);
