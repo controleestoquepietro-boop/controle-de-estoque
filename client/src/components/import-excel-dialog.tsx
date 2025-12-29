@@ -26,6 +26,7 @@ interface ImportExcelDialogProps {
 }
 
 export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
+  console.log("ImportExcelDialog render; open=", open);
   const { toast } = useToast();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<any[]>([]);
@@ -502,6 +503,7 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
     };
 
     const handleClose = () => {
+      console.log("ImportExcelDialog: handleClose called");
       setFile(null);
       setPreview([]);
       setErrors([]);
@@ -509,6 +511,7 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
     };
 
     const handleDialogOpenChange = (isOpen: boolean) => {
+      console.log("ImportExcelDialog: onOpenChange ->", isOpen);
       // Somente executar limpeza quando o diálogo for fechado (isOpen === false)
       if (!isOpen) handleClose();
     };
