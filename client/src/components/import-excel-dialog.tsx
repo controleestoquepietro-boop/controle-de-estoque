@@ -27,6 +27,77 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
   const [processedData, setProcessedData] = useState<InsertAlimento[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
 
+  // Helper: tenta converter a worksheet para JSON mesmo quando o cabeçalho ocupa múltiplas linhas
+  const parseWorksheetToJson = (worksheet: XLSX.WorkSheet, expectedKeys: string[]) => {
+    // tentativa padrão (usa a primeira linha com valores como cabeçalho)
+    let jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+
+    const looksLikeColumnLetters = (obj: any) => {
+      if (!obj) return false;
+      const keys = Object.keys(obj);
+      if (keys.length === 0) return false;
+      // detectar chaves A, B, C... ou 0,1,2
+      return keys.every(k => /^[A-Z]+$/.test(k) || /^\d+$/.test(k));
+    };
+
+    const normalize = (s: any) => {
+      if (s === null || s === undefined) return '';
+      return String(s)
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '')
+        .replace(/[^a-z0-9]/g, ''); // remove espaços e caracteres não alfanuméricos
+    };
+
+    // Sempre tentar detectar uma linha de cabeçalho lendo como matriz — isso lida com títulos que aparecem abaixo de algumas linhas de metadados
+    const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null });
+    let headerIndex = -1;
+    const normalizedExpected = expectedKeys.map(k => normalize(k));
+
+    for (let i = 0; i < Math.min(rows.length, 20); i++) {
+      const row = rows[i] || [];
+      const found = row.some((cell: any) => {
+        if (cell === null || cell === undefined) return false;
+        const v = normalize(cell);
+        return normalizedExpected.some(h => v.includes(h) || h.includes(v));
+      });
+      if (found) {
+        headerIndex = i;
+        break;
+      }
+    }
+
+    // Se não achou com heurística de nomes esperados, tentar heurística genérica: primeira linha com pelo menos 2 células não-vazias
+    if (headerIndex === -1) {
+      for (let i = 0; i < Math.min(rows.length, 20); i++) {
+        const row = rows[i] || [];
+        const nonEmptyCount = row.reduce((acc, cell) => acc + (cell !== null && cell !== undefined && String(cell).trim() !== '' ? 1 : 0), 0);
+        if (nonEmptyCount >= 2) { headerIndex = i; break; }
+      }
+    }
+
+    if (headerIndex >= 0) {
+      const headers = rows[headerIndex].map((h: any) => (h === null || h === undefined) ? '' : String(h).trim());
+      const out: any[] = [];
+      for (let r = headerIndex + 1; r < rows.length; r++) {
+        const row = rows[r];
+        if (!row || row.every((c: any) => c === null || c === undefined || String(c).trim() === '')) continue; // pular linhas vazias entre cabeçalho e dados
+        const obj: any = {};
+        for (let c = 0; c < headers.length; c++) {
+          const key = headers[c] || `col_${c}`;
+          obj[key] = row[c] !== undefined ? row[c] : null;
+        }
+        out.push(obj);
+      }
+      jsonData = out;
+    } else {
+      // Se nada foi detectado, aceitar o fallback já gerado por sheet_to_json (caso útil) — normalmente terá chaves __EMPTY
+      jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+    }
+
+    return jsonData;
+  };
+
   const importMutation = useMutation({
     mutationFn: async (alimentos: InsertAlimento[]) => {
       const result = await apiRequest('POST', '/api/alimentos/import', { alimentos });
@@ -70,51 +141,45 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
 
     try {
       const data = await selectedFile.arrayBuffer();
-      const workbook = XLSX.read(data);
+      const workbook = XLSX.read(data, { type: 'array', cellDates: true });
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+      const expectedHeaders = [
+        'codigo', 'codigo produto', 'z06_cod', 'codigoProduto', 'nome', 'descricao', 'z06_desc', 'quantidade', 'qtd', 'shelf', 'shelf life', 'data fabricacao', 'data validade'
+      ];
+      const jsonData = parseWorksheetToJson(worksheet, expectedHeaders);
 
       // Validar e processar dados
       const processedDataLocal: InsertAlimento[] = [];
       const validationErrors: string[] = [];
 
+      // Helper para obter valor por vários aliases, usando normalize igual ao parser
+      const getCellValue = (row: any, aliases: string[]) => {
+        const normalizeKey = (s: any) => {
+          if (s === null || s === undefined) return '';
+          return String(s).toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[^a-z0-9]/g, '');
+        };
+        const normalizedAliases = aliases.map(a => normalizeKey(a));
+        for (const k of Object.keys(row)) {
+          const nk = normalizeKey(k);
+          const val = row[k];
+          if (val === null || val === undefined || (typeof val === 'string' && val.trim() === '')) continue;
+          for (const a of normalizedAliases) {
+            if (nk.includes(a) || a.includes(nk)) return val;
+          }
+        }
+        return undefined;
+      };
+
       jsonData.forEach((row: any, index: number) => {
         try {
-          // Extrair código do produto (múltiplas variações de nomes de coluna)
-          let codigoProduto = String(
-            row['Código Produto'] || 
-            row['codigoProduto'] || 
-            row['Código'] || 
-            row['código'] || 
-            row['Z06_COD'] || 
-            row['Codigo'] || 
-            row['CODIGO'] || 
-            row['SKU'] || 
-            row['sku'] ||
-            row['Prod_Code'] ||
-            row['PROD_CODE'] ||
-            ''
-          ).trim();
-          
-          // Extrair nome/descrição do produto
-          let nome = String(
-            row['Nome'] || 
-            row['nome'] || 
-            row['Descrição'] || 
-            row['descrição'] || 
-            row['DESCRIÇÃO'] ||
-            row['Descricao'] ||
-            row['DESCRICAO'] || 
-            row['Z06_DESC'] || 
-            row['Desc'] ||
-            row['DESC'] ||
-            row['Product Name'] ||
-            row['PRODUCT_NAME'] ||
-            row['Produto'] ||
-            row['PRODUTO'] ||
-            ''
-          ).trim();
+          // Extrair código do produto com lookup normalizado
+          const codigoRaw = getCellValue(row, ['codigo', 'codigo produto', 'z06_cod', 'codigoProduto', 'cod', 'sku', 'prod_code']);
+          let codigoProduto = codigoRaw ? String(codigoRaw).trim() : '';
+
+          // Extrair nome/descrição do produto com lookup normalizado
+          const nomeRaw = getCellValue(row, ['nome', 'descricao', 'descricao do item', 'z06_desc', 'desc', 'product name', 'produto']);
+          let nome = nomeRaw ? String(nomeRaw).trim() : '';
           
           // Extrair temperatura
           let temperatura = String(
@@ -316,14 +381,14 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
                     Clique para selecionar um arquivo
                   </div>
                   <div className="text-sm text-muted-foreground mt-1">
-                    Aceita arquivos .xlsx e .xls
+                    Aceita arquivos .xlsx, .xls, .xlsm e .xlsb
                   </div>
                 </Label>
                 <input
                   data-testid="input-file-upload"
                   id="file-upload"
                   type="file"
-                  accept=".xlsx,.xls"
+                  accept=".xlsx,.xls,.xlsm,.xlsb"
                   onChange={handleFileChange}
                   className="hidden"
                 />

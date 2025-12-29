@@ -23,6 +23,8 @@ O componente de importação Excel (`import-excel-dialog.tsx`) foi atualizado pa
 
 - ✅ Excel 2007+ (.xlsx)
 - ✅ Excel 97-2003 (.xls)
+- ✅ Excel habilitado para macros (.xlsm) — somente leitura dos dados (macros são ignoradas)
+- ✅ Excel binário (.xlsb) — suportado (dados lidos, macros não executadas)
 
 ## 🔄 Conversão Automática
 

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Lock, Eye, EyeOff } from 'lucide-react';
 import logoPrieto from '@assets/LOGO-PRIETO_1761688931089.png';
 
 type RegisterState = 'form' | 'success' | 'email-exists';
@@ -19,6 +20,7 @@ export default function Register() {
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Verificar confirmação de email a cada 3 segundos quando estiver no estado 'success'
@@ -32,11 +34,12 @@ export default function Register() {
         nome,
         email,
         password: password ? '***' : '',
+        showPassword,
         registeredEmail,
         isChecking,
       });
     } catch (_) {}
-  }, [state, nome, email, password, registeredEmail, isChecking]);
+  }, [state, nome, email, password, showPassword, registeredEmail, isChecking]);
 
   useEffect(() => {
     if (state !== 'success' || !registeredEmail) return;
@@ -135,6 +138,7 @@ export default function Register() {
                   setNome('');
                   setEmail('');
                   setPassword('');
+                  setShowPassword(false);
                 }}
               >
                 Voltar para o Registro
@@ -213,14 +217,26 @@ export default function Register() {
 
             <div className="space-y-2">
               <Label htmlFor="password">Senha</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Digite sua senha"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Digite sua senha"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="pl-10 pr-10"
+                  required
+                />
+                <button
+                  type="button"
+                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1"
+                  onClick={() => setShowPassword((s) => !s)}
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5 text-muted-foreground" /> : <Eye className="h-5 w-5 text-muted-foreground" />}
+                </button>
+              </div>
             </div>
 
             <Button

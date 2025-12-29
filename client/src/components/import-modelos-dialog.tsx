@@ -27,6 +27,70 @@ export function ImportModelosDialog({ open, onClose }: ImportModelosDialogProps)
   const [processedData, setProcessedData] = useState<InsertModeloProduto[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
 
+  // Helper reuse: tenta converter worksheet em JSON mesmo com cabeçalhos deslocados
+  const parseWorksheetToJson = (worksheet: XLSX.WorkSheet, expectedKeys: string[]) => {
+    let jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+
+    const looksLikeColumnLetters = (obj: any) => {
+      if (!obj) return false;
+      const keys = Object.keys(obj);
+      if (keys.length === 0) return false;
+      return keys.every(k => /^[A-Z]+$/.test(k) || /^\d+$/.test(k));
+    };
+
+    const normalize = (s: any) => {
+      if (s === null || s === undefined) return '';
+      return String(s)
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '')
+        .replace(/[^a-z0-9]/g, '');
+    };
+
+    // Ler como matriz sempre e tentar detectar cabeçalho por heurística
+    const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null });
+    let headerIndex = -1;
+    const normalizedExpected = expectedKeys.map(k => normalize(k));
+
+    for (let i = 0; i < Math.min(rows.length, 20); i++) {
+      const row = rows[i] || [];
+      const found = row.some((cell: any) => {
+        if (cell === null || cell === undefined) return false;
+        const v = normalize(cell);
+        return normalizedExpected.some(h => v.includes(h) || h.includes(v));
+      });
+      if (found) { headerIndex = i; break; }
+    }
+
+    if (headerIndex === -1) {
+      for (let i = 0; i < Math.min(rows.length, 20); i++) {
+        const row = rows[i] || [];
+        const nonEmptyCount = row.reduce((acc, cell) => acc + (cell !== null && cell !== undefined && String(cell).trim() !== '' ? 1 : 0), 0);
+        if (nonEmptyCount >= 2) { headerIndex = i; break; }
+      }
+    }
+
+    if (headerIndex >= 0) {
+      const headers = rows[headerIndex].map((h: any) => (h === null || h === undefined) ? '' : String(h).trim());
+      const out: any[] = [];
+      for (let r = headerIndex + 1; r < rows.length; r++) {
+        const row = rows[r];
+        if (!row || row.every((c: any) => c === null || c === undefined || String(c).trim() === '')) continue; // pular linhas vazias entre cabeçalho e dados
+        const obj: any = {};
+        for (let c = 0; c < headers.length; c++) {
+          const key = headers[c] || `col_${c}`;
+          obj[key] = row[c] !== undefined ? row[c] : null;
+        }
+        out.push(obj);
+      }
+      jsonData = out;
+    } else {
+      jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+    }
+
+    return jsonData;
+  };
+
   const importMutation = useMutation({
     mutationFn: async (modelos: InsertModeloProduto[]) => {
           // Adiciona campos de sistema a todos os modelos
@@ -94,26 +158,37 @@ export function ImportModelosDialog({ open, onClose }: ImportModelosDialogProps)
 
     try {
       const data = await selectedFile.arrayBuffer();
-      const workbook = XLSX.read(data);
+      const workbook = XLSX.read(data, { type: 'array', cellDates: true });
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet);
+      const expectedHeaders = ['z06_cod','z0b_cod','cod','codigo','z06_desc','descricao','z06_arma','prazo','shelf','gtin'];
+      const jsonData = parseWorksheetToJson(worksheet, expectedHeaders);
 
       const processedData: InsertModeloProduto[] = [];
       const validationErrors: string[] = [];
 
       jsonData.forEach((row: any, index: number) => {
         try {
-              // Helper para reconhecer múltiplas variações de colunas possíveis
-              const getCell = (keys: string[]) => {
-                for (const k of keys) {
-                  if (row[k] !== undefined && row[k] !== null && String(row[k]).toString().trim() !== '') return row[k];
+              // Helper para reconhecer múltiplas variações de colunas possíveis, usando normalização
+              const normalizeKey = (s: any) => {
+                if (s === null || s === undefined) return '';
+                return String(s).toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[^a-z0-9]/g, '');
+              };
+              const getCell = (aliases: string[]) => {
+                const normalizedAliases = aliases.map(a => normalizeKey(a));
+                for (const k of Object.keys(row)) {
+                  const nk = normalizeKey(k);
+                  const val = row[k];
+                  if (val === null || val === undefined || (typeof val === 'string' && val.trim() === '')) continue;
+                  for (const a of normalizedAliases) {
+                    if (nk.includes(a) || a.includes(nk)) return val;
+                  }
                 }
                 return undefined;
               };
 
-              const codigo = getCell(['Z0B_COD', 'Z06_COD', 'COD', 'CODIGO', 'Código']);
-              const descricao = getCell(['Z0B_DESC', 'Z06_DESC', 'DESC', 'DESCRICAO', 'Descrição']);
+              const codigo = getCell(['Z0B_COD', 'Z06_COD', 'COD', 'CODIGO', 'Código', 'codigo', 'cod']);
+              const descricao = getCell(['Z0B_DESC', 'Z06_DESC', 'DESC', 'DESCRICAO', 'Descrição', 'descricao', 'descricao do item']);
               const temperatura = getCell(['Z0B_ARMA', 'Z06_ARMA', 'ARMA', 'TEMPERATURA']);
               const shelfRaw = getCell(['Z0B_PRAZO', 'Z06_PRAZO', 'Z0B_GTIN', 'Z06_GTIN', 'PRAZO', 'SHELF']);
               const pesoPorCaixaRaw = getCell(['Z0B_TRCX', 'Z06_TRCX', 'TRCX']);
@@ -143,7 +218,7 @@ export function ImportModelosDialog({ open, onClose }: ImportModelosDialogProps)
           const errors = [];
           if (!modelo.codigoProduto) errors.push('Código do Produto');
           if (!modelo.descricao) errors.push('Descrição');
-          if (!modelo.temperatura) errors.push('Temperatura');
+          // Temperatura agora é opcional (alguns modelos não têm esse campo)
           if (!modelo.shelfLife) errors.push('Prazo de Validade');
 
           if (errors.length > 0) {
@@ -238,14 +313,14 @@ export function ImportModelosDialog({ open, onClose }: ImportModelosDialogProps)
                     Clique para selecionar um arquivo
                   </div>
                   <div className="text-sm text-muted-foreground mt-1">
-                    Aceita arquivos .xlsx e .xls (Formato Protheus)
+                    Aceita arquivos .xlsx, .xls e .xlsm (Formato Protheus)
                   </div>
                 </Label>
                 <input
                   data-testid="input-file-upload-modelos"
                   id="file-upload-modelos"
                   type="file"
-                  accept=".xlsx,.xls"
+                  accept=".xlsx,.xls,.xlsm,.xlsb"
                   onChange={handleFileChange}
                   className="hidden"
                 />

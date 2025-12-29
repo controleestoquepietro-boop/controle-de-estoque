@@ -104,13 +104,33 @@ export class DatabaseStorage implements IStorage {
 
   async getModeloProdutoByCodigo(codigo: string): Promise<ModeloProduto | undefined> {
     const [modelo] = await db.select().from(modelosProdutos).where(eq(modelosProdutos.codigoProduto, codigo));
+    if (!modelo) return undefined;
+
+    try {
+      // Buscar última entrada (alimento) para esse código — para pre preencher datas no formulário
+      const [ultima] = await db
+        .select()
+        .from(alimentos)
+        .where(eq(alimentos.codigoProduto, codigo))
+        .orderBy(desc(alimentos.dataEntrada))
+        .limit(1);
+
+      if (ultima) {
+        // Anexar metadados úteis ao objeto do modelo (não altera a tabela)
+        (modelo as any).lastEntryDataFabricacao = ultima.dataFabricacao;
+        (modelo as any).lastEntryDataValidade = ultima.dataValidade;
+      }
+    } catch (e) {
+      console.warn('Falha ao buscar última entrada para modelo:', e);
+    }
+
     return modelo || undefined;
   }
 
   async createModeloProduto(insertModelo: InsertModeloProduto): Promise<ModeloProduto> {
     const [modelo] = await db
       .insert(modelosProdutos)
-      .values({ ...insertModelo, cadastradoPor: insertModelo.cadastradoPor || 'SISTEMA' } as any)
+      .values({ ...insertModelo, cadastradoPor: insertModelo.cadastradoPor || 'SISTEMA', temperatura: insertModelo.temperatura ?? 'N/D' } as any)
       .returning();
     return modelo;
   }
@@ -256,8 +276,9 @@ export class DatabaseStorage implements IStorage {
         console.log('✅ Alimento criado localmente, sincronização agendada');
         return result;
       } catch (dbErr) {
-        console.warn('⚠️ Falha ao inserir localmente:', dbErr);
-        throw new Error('Não foi possível criar o alimento');
+        console.error('⚠️ Falha ao inserir localmente:', dbErr);
+        const detail = (dbErr as any)?.message || JSON.stringify(dbErr) || 'erro desconhecido';
+        throw new Error(`Não foi possível criar o alimento: ${detail}`);
       }
     } catch (e) {
       console.error('❌ Erro ao criar alimento:', e);

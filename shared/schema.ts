@@ -116,7 +116,8 @@ export const insertModeloProdutoSchema =
     z.object({
       codigoProduto: z.string().min(1, "Código do produto é obrigatório"),
       descricao: z.string().min(1, "Descrição é obrigatória"),
-      temperatura: z.string().min(1, "Temperatura é obrigatória"),
+      // Temperatura opcional para modelos — aceitar string, null ou ausência do campo
+      temperatura: z.string().nullable().optional(),
       shelfLife: z.number().positive("Shelf life deve ser maior que zero"),
 
       // Campos opcionais + aceitam null — use nullable().optional()

@@ -971,6 +971,31 @@ async function registerRoutes(app) {
                     catch (e) {
                         modeloData.cadastradoPor = 'SISTEMA';
                     }
+                    // Normalizar/sanitizar campos comuns (aceitar string vazia como ausência)
+                    try {
+                        if (typeof modeloData.temperatura === 'string') {
+                            modeloData.temperatura = modeloData.temperatura.trim();
+                            if (modeloData.temperatura === '')
+                                delete modeloData.temperatura;
+                        }
+                        // Se temperatura ausente, aplicar fallback seguro para evitar violação NOT NULL no banco
+                        if (modeloData.temperatura === undefined || modeloData.temperatura === null) {
+                            modeloData.temperatura = 'N/D';
+                        }
+                        if (modeloData.shelfLife === '' || modeloData.shelfLife === null) {
+                            delete modeloData.shelfLife;
+                        }
+                        else if (typeof modeloData.shelfLife === 'string') {
+                            const n = Number(modeloData.shelfLife);
+                            if (!Number.isFinite(n))
+                                delete modeloData.shelfLife;
+                            else
+                                modeloData.shelfLife = n;
+                        }
+                    }
+                    catch (e) {
+                        // continue — sanificação deve ser silenciosa
+                    }
                     const data = schema_1.insertModeloProdutoSchema.parse(modeloData);
                     const existente = await storage_1.storage.getModeloProdutoByCodigo(data.codigoProduto);
                     if (existente) {
@@ -1255,6 +1280,107 @@ async function registerRoutes(app) {
             const errors = [];
             for (const alimentoData of alimentos) {
                 try {
+                    // Normalizar/sanitizar 'temperatura' — aceitar string vazia como ausência
+                    try {
+                        if (typeof alimentoData.temperatura === 'string') {
+                            alimentoData.temperatura = alimentoData.temperatura.trim();
+                            if (alimentoData.temperatura === '')
+                                delete alimentoData.temperatura;
+                        }
+                        // Se temperatura ausente, aplicar fallback seguro para evitar erro de validação/NOT NULL
+                        if (alimentoData.temperatura === undefined || alimentoData.temperatura === null) {
+                            alimentoData.temperatura = 'N/D';
+                        }
+                    }
+                    catch (e) {
+                        // Sanitização silenciosa
+                    }
+                    // Normalizar datas: aceitar número (serial Excel) ou formatos string variados
+                    try {
+                        const excelSerialToISO = (n) => {
+                            // Excel's epoch: 1900-01-01 is serial 1; convert to JS date
+                            const ms = (n - 25569) * 86400 * 1000;
+                            const d = new Date(ms);
+                            if (isNaN(d.getTime()))
+                                return undefined;
+                            return d.toISOString().split('T')[0];
+                        };
+                        const normalizeDateVal = (v) => {
+                            if (v === undefined || v === null)
+                                return undefined;
+                            if (typeof v === 'number')
+                                return excelSerialToISO(v);
+                            if (typeof v === 'string') {
+                                const s = v.trim();
+                                if (s === '')
+                                    return undefined;
+                                // If already ISO yyyy-mm-dd
+                                if (/^\d{4}-\d{2}-\d{2}$/.test(s))
+                                    return s;
+                                // Try Date parse
+                                const d = new Date(s);
+                                if (!isNaN(d.getTime()))
+                                    return d.toISOString().split('T')[0];
+                                // Try dd/mm/yyyy -> convert
+                                const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+                                if (m) {
+                                    const dd = m[1].padStart(2, '0');
+                                    const mm = m[2].padStart(2, '0');
+                                    let yyyy = m[3];
+                                    if (yyyy.length === 2) {
+                                        yyyy = Number(yyyy) > 50 ? '19' + yyyy : '20' + yyyy;
+                                    }
+                                    return `${yyyy}-${mm}-${dd}`;
+                                }
+                            }
+                            return undefined;
+                        };
+                        try {
+                            const df = normalizeDateVal(alimentoData.dataFabricacao);
+                            if (df)
+                                alimentoData.dataFabricacao = df;
+                            else
+                                delete alimentoData.dataFabricacao;
+                        }
+                        catch (e) { }
+                        try {
+                            const dv = normalizeDateVal(alimentoData.dataValidade);
+                            if (dv)
+                                alimentoData.dataValidade = dv;
+                            else
+                                delete alimentoData.dataValidade;
+                        }
+                        catch (e) { }
+                        // Shelf life coercion: aceitar string numérica e default para 365
+                        try {
+                            if (alimentoData.shelfLife === '' || alimentoData.shelfLife === null || alimentoData.shelfLife === undefined) {
+                                alimentoData.shelfLife = 365;
+                            }
+                            else if (typeof alimentoData.shelfLife === 'string') {
+                                const n = Number(alimentoData.shelfLife);
+                                alimentoData.shelfLife = Number.isFinite(n) ? n : 365;
+                            }
+                        }
+                        catch (e) { }
+                        // Se faltar dataFabricacao, usar data do servidor
+                        if (!alimentoData.dataFabricacao) {
+                            alimentoData.dataFabricacao = new Date().toISOString().split('T')[0];
+                        }
+                        // Se faltar dataValidade, tentar calcular a partir de shelfLife
+                        if (!alimentoData.dataValidade && alimentoData.shelfLife) {
+                            try {
+                                const fab = new Date(alimentoData.dataFabricacao);
+                                fab.setDate(fab.getDate() + Number(alimentoData.shelfLife));
+                                alimentoData.dataValidade = fab.toISOString().split('T')[0];
+                            }
+                            catch (e) {
+                                // ignore
+                            }
+                        }
+                    }
+                    catch (e) {
+                        // silent
+                    }
                     const data = schema_1.insertAlimentoSchema.parse(alimentoData);
                     // Se o lote estiver ausente durante a importação, atribuímos um padrão
                     const dataComLote = {

@@ -104,7 +104,8 @@ exports.insertUserSchema = zod_1.z.object({
 exports.insertModeloProdutoSchema = _create(exports.modelosProdutos).merge(zod_1.z.object({
     codigoProduto: zod_1.z.string().min(1, "Código do produto é obrigatório"),
     descricao: zod_1.z.string().min(1, "Descrição é obrigatória"),
-    temperatura: zod_1.z.string().min(1, "Temperatura é obrigatória"),
+    // Temperatura opcional para modelos — aceitar string, null ou ausência do campo
+    temperatura: zod_1.z.string().nullable().optional(),
     shelfLife: zod_1.z.number().positive("Shelf life deve ser maior que zero"),
     // Campos opcionais + aceitam null — use nullable().optional()
     gtin: zod_1.z.string().nullable().optional(),

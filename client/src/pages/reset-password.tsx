@@ -166,7 +166,6 @@ export default function ResetPassword() {
               <Label htmlFor="newPassword">Nova Senha</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <div className="relative">
                 <Input
                   id="newPassword"
                   data-testid="input-new-password"
@@ -174,7 +173,7 @@ export default function ResetPassword() {
                   placeholder="Digite sua nova senha"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 pr-10"
                   required
                   minLength={6}
                 />
@@ -186,7 +185,6 @@ export default function ResetPassword() {
                 >
                   {showNew ? <EyeOff className="h-5 w-5 text-muted-foreground" /> : <Eye className="h-5 w-5 text-muted-foreground" />}
                 </button>
-                </div>
               </div>
             </div>
 
@@ -194,7 +192,6 @@ export default function ResetPassword() {
               <Label htmlFor="confirmPassword">Confirmar Nova Senha</Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <div className="relative">
                 <Input
                   id="confirmPassword"
                   data-testid="input-confirm-password"
@@ -202,7 +199,7 @@ export default function ResetPassword() {
                   placeholder="Confirme sua nova senha"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 pr-10"
                   required
                   minLength={6}
                 />
@@ -214,7 +211,6 @@ export default function ResetPassword() {
                 >
                   {showConfirm ? <EyeOff className="h-5 w-5 text-muted-foreground" /> : <Eye className="h-5 w-5 text-muted-foreground" />}
                 </button>
-                </div>
               </div>
             </div>
 

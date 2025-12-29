@@ -71,12 +71,31 @@ class DatabaseStorage {
     }
     async getModeloProdutoByCodigo(codigo) {
         const [modelo] = await db_1.db.select().from(schema_1.modelosProdutos).where((0, drizzle_orm_1.eq)(schema_1.modelosProdutos.codigoProduto, codigo));
+        if (!modelo)
+            return undefined;
+        try {
+            // Buscar última entrada (alimento) para esse código — para pre preencher datas no formulário
+            const [ultima] = await db_1.db
+                .select()
+                .from(schema_1.alimentos)
+                .where((0, drizzle_orm_1.eq)(schema_1.alimentos.codigoProduto, codigo))
+                .orderBy((0, drizzle_orm_1.desc)(schema_1.alimentos.dataEntrada))
+                .limit(1);
+            if (ultima) {
+                // Anexar metadados úteis ao objeto do modelo (não altera a tabela)
+                modelo.lastEntryDataFabricacao = ultima.dataFabricacao;
+                modelo.lastEntryDataValidade = ultima.dataValidade;
+            }
+        }
+        catch (e) {
+            console.warn('Falha ao buscar última entrada para modelo:', e);
+        }
         return modelo || undefined;
     }
     async createModeloProduto(insertModelo) {
         const [modelo] = await db_1.db
             .insert(schema_1.modelosProdutos)
-            .values({ ...insertModelo, cadastradoPor: insertModelo.cadastradoPor || 'SISTEMA' })
+            .values({ ...insertModelo, cadastradoPor: insertModelo.cadastradoPor || 'SISTEMA', temperatura: insertModelo.temperatura ?? 'N/D' })
             .returning();
         return modelo;
     }
@@ -217,8 +236,9 @@ class DatabaseStorage {
                 return result;
             }
             catch (dbErr) {
-                console.warn('⚠️ Falha ao inserir localmente:', dbErr);
-                throw new Error('Não foi possível criar o alimento');
+                console.error('⚠️ Falha ao inserir localmente:', dbErr);
+                const detail = dbErr?.message || JSON.stringify(dbErr) || 'erro desconhecido';
+                throw new Error(`Não foi possível criar o alimento: ${detail}`);
             }
         }
         catch (e) {

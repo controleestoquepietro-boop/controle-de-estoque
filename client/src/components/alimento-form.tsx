@@ -124,6 +124,22 @@ export function AlimentoForm({ open, onClose, onSubmit, initialData }: AlimentoF
         if (modeloEncontrado.pesoPorCaixa) {
           setValue('pesoPorCaixa', modeloEncontrado.pesoPorCaixa);
         }
+
+        // Preencher datas automaticamente com base na última entrada do modelo
+        try {
+          const lastFab = (modeloEncontrado as any).lastEntryDataFabricacao;
+          const lastVal = (modeloEncontrado as any).lastEntryDataValidade;
+
+          // Se o formulário ainda não tiver datas, preenchê-las
+          if (lastFab && !watch('dataFabricacao')) {
+            setValue('dataFabricacao', String(lastFab).slice(0, 10));
+          }
+          if (lastVal && !watch('dataValidade')) {
+            setValue('dataValidade', String(lastVal).slice(0, 10));
+          }
+        } catch (e) {
+          // silencioso
+        }
       }
     } catch (e) {
       // silencioso
