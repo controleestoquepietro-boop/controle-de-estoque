@@ -424,16 +424,12 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
             const qtdCx = toNumber(qtdCxRaw);
             const qtd = toNumber(qtdRaw);
 
-            if (qtdKg !== undefined) {
+            // Preferir QTD CX (caixas) quando presente, pois o arquivo original especifica QTD CX
+            if (qtdCx !== undefined) {
+              // manter como número de caixas (unidade caixa) por padrão
+              quantidade = qtdCx;
+            } else if (qtdKg !== undefined) {
               quantidade = qtdKg;
-            } else if (qtdCx !== undefined) {
-              // se houver peso por caixa, converte caixas -> kg
-              if (pesoPorCaixaNum !== undefined) {
-                quantidade = qtdCx * pesoPorCaixaNum;
-              } else {
-                // sem peso por caixa, interpretamos como unidades (caixas)
-                quantidade = qtdCx;
-              }
             } else if (qtd !== undefined) {
               quantidade = qtd;
             }
@@ -442,10 +438,19 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
             const unidadeRaw = mapped.unidade ?? row["Unidade"] ?? row["unidade"] ?? row["Unit"] ?? row["UNIT"] ?? row["Unidade Medida"] ?? row["unidade_medida"] ?? row["Z06_UNI"] ?? "kg";
             const unidade = String(unidadeRaw).toLowerCase();
 
+            // Decidir unidade final: por padrão kg, mas se houver QTD CX sem pesoPorCaixa assumimos que a quantidade está em caixas
+            let finalUnidade = unidade === "caixa" || unidade === "cx" ? "caixa" : "kg";
+            if (qtdCx !== undefined && pesoPorCaixaNum === undefined) {
+              finalUnidade = "caixa";
+            }
+
+            // Debug: facilitar diagnóstico em produção/dev
+            console.log(`ImportExcel: row=${index + 2} qtdKg=${qtdKg} qtdCx=${qtdCx} pesoPorCaixa=${pesoPorCaixaNum} -> quantidade=${quantidade} unidade=${finalUnidade} dataFab=${dataFabricacao} dataVal=${dataValidade}`);
+
             const alimento = {
               codigoProduto,
               nome,
-              unidade: unidade === "caixa" || unidade === "cx" ? "caixa" : "kg",
+              unidade: finalUnidade,
               lote,
               dataFabricacao: String(dataFabricacao),
               dataValidade: String(dataValidade),
