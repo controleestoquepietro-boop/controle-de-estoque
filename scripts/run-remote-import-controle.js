@@ -96,9 +96,24 @@ function getCellValue(row, aliases) {
     const qtdCx = toNumber(qtdCxRaw);
     const pesoNum = toNumber(pesoPorCaixa);
     let quantidade = 0;
-    // Preferir QTD CX (caixas) quando presente — esse arquivo usa QTD CX
+    // Heurística: priorizar QTD CX, depois tentar inferir QTD como caixas quando QTD KG existir
     if (qtdCx !== undefined) {
       quantidade = qtdCx;
+    } else if (qtdRaw !== undefined && qtdKg !== undefined) {
+      const qtdNum = qtdRaw;
+      const pesoTotal = qtdKg;
+      if (pesoNum !== undefined && Math.abs(pesoTotal - qtdNum * pesoNum) <= Math.max(1, Math.abs(pesoTotal) * 0.05)) {
+        quantidade = qtdNum; // interpreta-se como caixas
+      } else if (pesoNum === undefined && qtdNum > 0 && pesoTotal > 0) {
+        const inferred = pesoTotal / qtdNum;
+        if (inferred >= 0.2 && inferred <= 50) {
+          quantidade = qtdNum;
+        } else {
+          quantidade = pesoTotal; // usar kg
+        }
+      } else {
+        quantidade = pesoTotal;
+      }
     } else if (qtdKg !== undefined) {
       quantidade = qtdKg;
     } else if (qtdRaw !== undefined) {
@@ -111,8 +126,8 @@ function getCellValue(row, aliases) {
     // unidade
     mapped.unidade = 'kg';
     if (String(getCellValue(row, ['Unidade','unidade']) || 'kg').toLowerCase().includes('cx')) mapped.unidade = 'caixa';
-    // Se existe QTD CX e não há pesoPorCaixa definido, então assumimos que a quantidade encontrada é em caixas
-    if (qtdCx !== undefined && pesoNum === undefined) {
+    // Se existe QTD CX ou inferimos QTD como caixas, forçar unidade caixa
+    if (qtdCx !== undefined || (qtdRaw !== undefined && qtdKg !== undefined)) {
       mapped.unidade = 'caixa';
     }
 

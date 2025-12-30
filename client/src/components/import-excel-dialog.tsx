@@ -267,23 +267,26 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
               return date.toISOString().split("T")[0];
             }
             // String attempts
-            const s = String(v).trim();
-            // YYYY-MM-DD
-            if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-            // DD/MM/YYYY or D/M/YYYY
-            const ddmmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-            if (ddmmy) {
-              let day = ddmmy[1].padStart(2, "0");
-              let month = ddmmy[2].padStart(2, "0");
-              let year = ddmmy[3];
-              if (year.length === 2) year = "20" + year;
-              return `${year}-${month}-${day}`;
-            }
-            // Última tentativa com Date parser do JS
-            const parsed = new Date(s);
-            if (!isNaN(parsed.getTime()))
-              return parsed.toISOString().split("T")[0];
-            return undefined;
+            // Extrair primeiro padrão de data da string (DD/MM/YYYY ou YYYY-MM-DD) se houver ruído
+        let s = String(v).trim();
+        const mExtract = s.match(/(\d{4}-\d{2}-\d{2})|(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/);
+        if (mExtract && mExtract[0]) s = mExtract[0];
+
+        // YYYY-MM-DD
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        // DD/MM/YYYY or D/M/YYYY
+        const ddmmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+        if (ddmmy) {
+          let day = ddmmy[1].padStart(2, "0");
+          let month = ddmmy[2].padStart(2, "0");
+          let year = ddmmy[3];
+          if (year.length === 2) year = "20" + year;
+          return `${year}-${month}-${day}`;
+        }
+        // Última tentativa com Date parser do JS
+        const parsed = new Date(s);
+        if (!isNaN(parsed.getTime())) return parsed.toISOString().split("T")[0];
+        return undefined;
           } catch (err) {
             console.warn("Erro ao parsear data (parseAnyDate):", err);
             return undefined;
@@ -424,25 +427,58 @@ export function ImportExcelDialog({ open, onClose }: ImportExcelDialogProps) {
             const qtdCx = toNumber(qtdCxRaw);
             const qtd = toNumber(qtdRaw);
 
-            // Preferir QTD CX (caixas) quando presente, pois o arquivo original especifica QTD CX
+            // Inferência de quantidade/unidade considerando QTD, QTD KG, QTD CX e pesoPorCaixa
+            // Prioridade:
+            // 1) QTD CX explícito
+            // 2) Se QTD e QTD KG existem, tentar inferir se QTD representa caixas
+            // 3) QTD KG sozinho -> quantidade em kg
+            // 4) QTD genérica
             if (qtdCx !== undefined) {
-              // manter como número de caixas (unidade caixa) por padrão
               quantidade = qtdCx;
+            } else if (qtd !== undefined && qtdKg !== undefined) {
+              // Se temos QTD (número) e QTD KG (peso total), testar compatibilidade com pesoPorCaixa
+              const qtdNum = qtd;
+              const pesoTotal = qtdKg;
+
+              // Caso o pesoPorCaixa esteja presente e satisfait qtd * pesoPorCaixa ~= qtdKg
+              if (pesoPorCaixaNum !== undefined && Math.abs(pesoTotal - qtdNum * pesoPorCaixaNum) <= Math.max(1, Math.abs(pesoTotal) * 0.05)) {
+                quantidade = qtdNum; // interpretar como caixas
+                // manter pesoPorCaixaNum já definido
+              } else if (pesoPorCaixaNum === undefined && qtdNum > 0 && pesoTotal > 0) {
+                // Inferir pesoPorCaixa plausível e usá-lo se estiver numa faixa razoável (0.2kg..50kg por caixa)
+                const inferred = pesoTotal / qtdNum;
+                if (inferred >= 0.2 && inferred <= 50) {
+                  quantidade = qtdNum;
+                  // arredondar a 3 casas
+                  pesoPorCaixaNum = Math.round(inferred * 1000) / 1000;
+                  console.info('ImportExcel: inferido pesoPorCaixa a partir de QTD e QTD KG ->', pesoPorCaixaNum);
+                } else {
+                  // Não confiamos na inferência — usar peso total como kg
+                  quantidade = pesoTotal;
+                }
+              } else {
+                // Não temos elementos suficientes: fallback para qtdKg (peso)
+                quantidade = pesoTotal;
+              }
             } else if (qtdKg !== undefined) {
               quantidade = qtdKg;
             } else if (qtd !== undefined) {
               quantidade = qtd;
             }
 
-            // unidade
+            // unidade (baseado em campo e inferência)
             const unidadeRaw = mapped.unidade ?? row["Unidade"] ?? row["unidade"] ?? row["Unit"] ?? row["UNIT"] ?? row["Unidade Medida"] ?? row["unidade_medida"] ?? row["Z06_UNI"] ?? "kg";
             const unidade = String(unidadeRaw).toLowerCase();
 
-            // Decidir unidade final: por padrão kg, mas se houver QTD CX sem pesoPorCaixa assumimos que a quantidade está em caixas
             let finalUnidade = unidade === "caixa" || unidade === "cx" ? "caixa" : "kg";
-            if (qtdCx !== undefined && pesoPorCaixaNum === undefined) {
+            // Se quantidade foi inferida como caixas (qtdCx ou qtd usada como caixas), definir unidade caixa
+            if (qtdCx !== undefined || (qtd !== undefined && qtdKg !== undefined && Number.isFinite(pesoPorCaixaNum))) {
               finalUnidade = "caixa";
             }
+
+            // Se ainda não temos pesoPorCaixa e temos dados que permitiram inferir acima, manter o valor inferido
+            // (pesoPorCaixaNum já atualizado quando inferido)
+
 
             // Debug: facilitar diagnóstico em produção/dev
             console.log(`ImportExcel: row=${index + 2} qtdKg=${qtdKg} qtdCx=${qtdCx} pesoPorCaixa=${pesoPorCaixaNum} -> quantidade=${quantidade} unidade=${finalUnidade} dataFab=${dataFabricacao} dataVal=${dataValidade}`);
