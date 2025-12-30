@@ -1065,20 +1065,24 @@ app.post('/api/alimentos', requireAuth, async (req: any, res) => {
     // Sincronização com Supabase já é feita dentro de `storage.createAlimento`.
     // Evitamos duplicar inserts aqui para não causar erros de FK ou duplicidade.
 
-    // Registrar no audit log (inclui quantidade inicial explicitamente)
-    await storage.createAuditLog({
-      alimentoId: alimento.id,
-      alimentoCodigo: alimento.codigoProduto,
-      alimentoNome: alimento.nome,
-      action: 'CREATE',
-      userId: req.user.id,
-      userName: req.user.nome,
-      changes: { 
-        alimento: data,
-        quantidadeInicial: alimento.quantidade,
-        dataEntrada: alimento.dataEntrada,
-      },
-    });
+    // Registrar no audit log (não crítico — falhas de logging não devem impedir a criação)
+    try {
+      await storage.createAuditLog({
+        alimentoId: alimento.id,
+        alimentoCodigo: alimento.codigoProduto,
+        alimentoNome: alimento.nome,
+        action: 'CREATE',
+        userId: req.user.id,
+        userName: req.user.nome,
+        changes: { 
+          alimento: data,
+          quantidadeInicial: alimento.quantidade,
+          dataEntrada: alimento.dataEntrada,
+        },
+      });
+    } catch (e) {
+      console.warn('Falha ao gravar audit_log (não crítico) [CREATE]:', e && (e.message || e));
+    }
 
     res.json(alimento);
   } catch (error: any) {
@@ -1108,16 +1112,20 @@ app.post('/api/alimentos', requireAuth, async (req: any, res) => {
 
       const alimento = await storage.updateAlimento(id, data);
 
-      // Registrar no audit log
-      await storage.createAuditLog({
-        alimentoId: id,
-        alimentoCodigo: alimento?.codigoProduto || alimentoAntes.codigoProduto,
-        alimentoNome: alimento?.nome || alimentoAntes.nome,
-        action: 'UPDATE',
-        userId: req.user.id,
-        userName: req.user.nome,
-        changes: { antes: alimentoAntes, depois: data },
-      });
+      // Registrar no audit log (não crítico)
+      try {
+        await storage.createAuditLog({
+          alimentoId: id,
+          alimentoCodigo: alimento?.codigoProduto || alimentoAntes.codigoProduto,
+          alimentoNome: alimento?.nome || alimentoAntes.nome,
+          action: 'UPDATE',
+          userId: req.user.id,
+          userName: req.user.nome,
+          changes: { antes: alimentoAntes, depois: data },
+        });
+      } catch (e) {
+        console.warn('Falha ao gravar audit_log (não crítico) [UPDATE]:', e && (e.message || e));
+      }
 
       res.json(alimento);
     } catch (error: any) {
@@ -1138,16 +1146,20 @@ app.post('/api/alimentos', requireAuth, async (req: any, res) => {
 
       const success = await storage.deleteAlimento(id);
 
-      // Registrar no audit log
-      await storage.createAuditLog({
-        alimentoId: undefined, // Alimento foi deletado
-        alimentoCodigo: alimento.codigoProduto,
-        alimentoNome: alimento.nome,
-        action: 'DELETE',
-        userId: req.user.id,
-        userName: req.user.nome,
-        changes: { alimento },
-      });
+      // Registrar no audit log (não crítico)
+      try {
+        await storage.createAuditLog({
+          alimentoId: undefined, // Alimento foi deletado
+          alimentoCodigo: alimento.codigoProduto,
+          alimentoNome: alimento.nome,
+          action: 'DELETE',
+          userId: req.user.id,
+          userName: req.user.nome,
+          changes: { alimento },
+        });
+      } catch (e) {
+        console.warn('Falha ao gravar audit_log (não crítico) [DELETE]:', e && (e.message || e));
+      }
 
       // Em ambiente de desenvolvimento, tentar também limpar duplicatas remotas
       // por código_produto + lote quando existirem (ajuda a evitar que itens
@@ -1241,36 +1253,40 @@ app.post('/api/alimentos', requireAuth, async (req: any, res) => {
         // ignore
       }
 
-      // Registrar no audit log com mais detalhes do estoque
+      // Registrar no audit log com mais detalhes do estoque (não crítico)
       // Observação: `quantidadeInicialFromCreate` tentava recuperar a quantidade
       // originalmente registrada na criação do produto. Em muitos casos é mais
       // útil registrar a quantidade que estava cadastrada imediatamente antes
       // da saída (p.ex. após edições) — isto é `alimentoAntes.quantidade`.
-      await storage.createAuditLog({
-        alimentoId: id,
-        alimentoCodigo: alimento?.codigoProduto || alimentoAntes.codigoProduto,
-        alimentoNome: alimento?.nome || alimentoAntes.nome,
-        action: 'SAIDA',
-        userId: req.user.id,
-        userName: req.user.nome,
-        changes: {
-          quantidadeSaida: quantidade,
-          estoqueAntes: quantidadeAntes,
-          estoqueDepois: alimento?.quantidade || 0,
-          dataSaida: new Date().toISOString(),
-          loteSaida: alimentoAntes.lote,
-          cadastradoPor: alimentoAntes.cadastradoPor,
-          dataEntrada: alimentoAntes.dataEntrada,
-          // `quantidadeInicial` deve refletir o valor que foi inserido pela
-          // primeira vez — seja na criação ou na primeira edição que definiu a
-          // quantidade. Se não encontrarmos esse histórico, caímos para o
-          // valor que estava cadastrado imediatamente antes da saída.
-          quantidadeInicial: quantidadeInicialFromCreate ?? quantidadeAntes,
-          // preservamos o valor da criação (ou do primeiro registro encontrado)
-          // em uma chave separada para facilitar auditoria.
-          quantidadeInicialCriacao: quantidadeInicialFromCreate,
-        },
-      });
+      try {
+        await storage.createAuditLog({
+          alimentoId: id,
+          alimentoCodigo: alimento?.codigoProduto || alimentoAntes.codigoProduto,
+          alimentoNome: alimento?.nome || alimentoAntes.nome,
+          action: 'SAIDA',
+          userId: req.user.id,
+          userName: req.user.nome,
+          changes: {
+            quantidadeSaida: quantidade,
+            estoqueAntes: quantidadeAntes,
+            estoqueDepois: alimento?.quantidade || 0,
+            dataSaida: new Date().toISOString(),
+            loteSaida: alimentoAntes.lote,
+            cadastradoPor: alimentoAntes.cadastradoPor,
+            dataEntrada: alimentoAntes.dataEntrada,
+            // `quantidadeInicial` deve refletir o valor que foi inserido pela
+            // primeira vez — seja na criação ou na primeira edição que definiu a
+            // quantidade. Se não encontrarmos esse histórico, caímos para o
+            // valor que estava cadastrado imediatamente antes da saída.
+            quantidadeInicial: quantidadeInicialFromCreate ?? quantidadeAntes,
+            // preservamos o valor da criação (ou do primeiro registro encontrado)
+            // em uma chave separada para facilitar auditoria.
+            quantidadeInicialCriacao: quantidadeInicialFromCreate,
+          },
+        });
+      } catch (e) {
+        console.warn('Falha ao gravar audit_log (não crítico) [SAIDA]:', e && (e.message || e));
+      }
 
       res.json(alimento);
     } catch (error: any) {
@@ -1419,16 +1435,20 @@ app.post('/api/alimentos', requireAuth, async (req: any, res) => {
           
           const alimento = await storage.createAlimento(alimentoComDataServidor, req.user.id);
 
-          // Registrar no audit log
-          await storage.createAuditLog({
-            alimentoId: alimento.id,
-            alimentoCodigo: alimento.codigoProduto,
-            alimentoNome: alimento.nome,
-            action: 'CREATE',
-            userId: req.user.id,
-            userName: req.user.nome,
-            changes: { alimento: data, importado: true },
-          });
+          // Registrar no audit log (não crítico)
+          try {
+            await storage.createAuditLog({
+              alimentoId: alimento.id,
+              alimentoCodigo: alimento.codigoProduto,
+              alimentoNome: alimento.nome,
+              action: 'CREATE',
+              userId: req.user.id,
+              userName: req.user.nome,
+              changes: { alimento: data, importado: true },
+            });
+          } catch (e) {
+            console.warn('Falha ao gravar audit_log (não crítico) [IMPORT]:', e && (e.message || e));
+          }
 
           imported++;
         } catch (error: any) {
